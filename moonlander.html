@@ -40,53 +40,101 @@
       const height = canvas.height;
 
       // --- Procedural terrain (peaks, valleys, and a flat pad segment) ---
-      let terrain = { samples: [], step: 4 };
+      const levels = [
+        {
+          name: 'Crater Run',
+          worldWidth: 2000,
+          baseBand: [0.65, 0.9],
+          amp: 0.22,
+          waveScale: 0.65,
+          waveFreq: 0.012,
+          roughWaveFreq: 0.037,
+          noiseScale: 0.12,
+          padOffset: 0.78,
+        },
+        {
+          name: 'Basalt Dunes',
+          worldWidth: 2400,
+          baseBand: [0.60, 0.88],
+          amp: 0.26,
+          waveScale: 0.72,
+          waveFreq: 0.009,
+          roughWaveFreq: 0.028,
+          noiseScale: 0.16,
+          padOffset: 0.66,
+        },
+        {
+          name: 'Ridge Maze',
+          worldWidth: 2600,
+          baseBand: [0.58, 0.9],
+          amp: 0.28,
+          waveScale: 0.80,
+          waveFreq: 0.007,
+          roughWaveFreq: 0.032,
+          noiseScale: 0.18,
+          padOffset: 0.82,
+        },
+      ];
 
-      function generateTerrain() {
+      let currentLevelIndex = 0;
+      let nextLevelIndex = 0;
+
+      let terrain = { samples: [], step: 4, width: width, levelName: levels[0].name };
+      const pad = { x: 0, y: 0, w: 110, h: 10 };
+
+      function generateTerrain(index = currentLevelIndex) {
+        currentLevelIndex = index;
+        nextLevelIndex = currentLevelIndex;
+        const level = levels[currentLevelIndex];
+        terrain.levelName = level.name;
         const step = 4; // px between samples for the height profile
-        const cols = Math.ceil(width / step) + 1;
+        terrain.step = step;
+        terrain.width = level.worldWidth;
+        const cols = Math.ceil(level.worldWidth / step) + 1;
         const h = new Array(cols);
 
-        // base band where terrain should live (lower half of screen)
-        const base = height * 0.70; // average height
-        const amp  = height * 0.18; // amplitude of variation
+        const baseMin = height * level.baseBand[0];
+        const baseMax = height * level.baseBand[1];
+        const baseMid = (baseMin + baseMax) * 0.5;
+        const amp = height * level.amp;
 
-        // random walk with smoothing
-        let y = base + (Math.random() * amp - amp/2) * 0.2;
-        let dy = 0;
+        let y = baseMid;
         for (let i = 0; i < cols; i++) {
-          dy += (Math.random() - 0.5) * 0.8;   // add a bit of trend
-          dy *= 0.9;                            // smooth trend
-          y  += dy;                             // integrate
-          // clamp into band
-          y = Math.max(height * 0.55, Math.min(height * 0.92, y));
+          const t = i * step;
+          const primaryWave = Math.sin(t * level.waveFreq) * amp * level.waveScale;
+          const secondaryWave = Math.sin((t + 500) * level.roughWaveFreq) * amp * 0.35;
+          const target = baseMid + primaryWave + secondaryWave;
+          const noise = (Math.random() - 0.5) * amp * level.noiseScale;
+          y = y * 0.55 + (target + noise) * 0.45;
+          y = Math.max(baseMin, Math.min(baseMax, y));
           h[i] = y | 0;
         }
 
-        // create a flat segment for landing pad
-        const padW = 100; // keep in sync with pad.w
+        // create a flat segment for landing pad away from the start
+        const padW = 110; // keep in sync with pad.w
         const padStepCount = Math.max(4, Math.round(padW / step));
-        const padStartPx = Math.floor(60 + Math.random() * (width - 60 - padW));
-        const padStartIdx = Math.floor(padStartPx / step);
-        const padY = Math.min(h[padStartIdx], h[padStartIdx + padStepCount]) | 0; // choose lower of edges
+        const padStartPx = Math.floor(level.worldWidth * level.padOffset - padW / 2);
+        const padStartIdx = Math.max(0, Math.min(cols - padStepCount - 1, Math.floor(padStartPx / step)));
+        let padY = h[padStartIdx];
+        for (let i = 1; i < padStepCount; i++) padY = Math.min(padY, h[padStartIdx + i]);
         for (let i = 0; i < padStepCount; i++) h[padStartIdx + i] = padY;
 
         terrain.samples = h;
-        terrain.step = step;
 
         // update pad position to sit on top of the flat segment
+        pad.w = padW;
         pad.x = padStartIdx * step;
         pad.y = padY - pad.h; // top of terrain minus pad height
-        pad.w = padW;
       }
 
       function terrainY(x) {
         // linear interpolation between nearest samples
         const step = terrain.step;
-        const idx = Math.floor(x / step);
+        const clampedX = Math.max(0, Math.min(terrain.width, x));
+        const idx = Math.floor(clampedX / step);
         const a = Math.max(0, Math.min(terrain.samples.length - 1, idx));
         const b = Math.max(0, Math.min(terrain.samples.length - 1, idx + 1));
-        const t = (x - a * step) / step;
+        const t = (clampedX - a * step) / step;
         return (terrain.samples[a] * (1 - t) + terrain.samples[b] * t);
       }
       // --- End terrain helpers ---
@@ -136,12 +184,6 @@
         // rotateSpeed: 0.04,
       };
 
-      const pad = {
-        x: width / 2 - 50,
-        y: height - 20,
-        w: 100,
-        h: 10,
-      };
 let g = 0.00026; // gravity (tunable, slightly lower)
       let lastTime = null;
       let keys = {};
@@ -212,7 +254,13 @@ let camX = null; let camY = null;
       });
 
       function resetGame() {
-        lander.x = width / 2;
+        if (shouldRegen) { // generate next level after a successful landing
+          generateTerrain(nextLevelIndex);
+          shouldRegen = false;
+        }
+        const level = levels[currentLevelIndex];
+        const startBuffer = 140;
+        lander.x = Math.min(level.worldWidth * 0.08, level.worldWidth - startBuffer);
         lander.y = 50;
         lander.vx = 0;
         lander.vy = 0;
@@ -227,10 +275,6 @@ let camX = null; let camY = null;
         winFx = [];
         padFlash = 0;
         smoke = [];
-        if (shouldRegen) { // only regenerate after a successful landing
-          generateTerrain();
-          shouldRegen = false;
-        }
         // reset camera to new terrain context
         camX = lander.x;
         camY = lander.y;
@@ -278,7 +322,7 @@ let camX = null; let camY = null;
           }
           // side walls (optional, keep pieces on screen)
           if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx) * BOUNCE; }
-          if (p.x > width) { p.x = width; p.vx = -Math.abs(p.vx) * BOUNCE; }
+          if (p.x > terrain.width) { p.x = terrain.width; p.vx = -Math.abs(p.vx) * BOUNCE; }
         }
         // trim dead
         debris = debris.filter(p => p.life > 0.0);
@@ -357,7 +401,7 @@ let camX = null; let camY = null;
       function castThrustRay(originX, originY, dirX, dirY, maxDistance) {
         // Ray-march the exhaust downwards until it collides with terrain.
         if (dirY <= 0) return null;
-        const wrapX = (x) => ((x % width) + width) % width;
+        const clampX = (x) => Math.max(0, Math.min(terrain.width, x));
         const step = Math.max(2, terrain.step * 0.5);
         const maxSteps = Math.ceil(maxDistance / step);
         let traveled = 0;
@@ -366,7 +410,7 @@ let camX = null; let camY = null;
         for (let i = 0; i < maxSteps; i++) {
           const nextX = prevX + dirX * step;
           const nextY = prevY + dirY * step;
-          const groundY = terrainY(wrapX(nextX));
+          const groundY = terrainY(clampX(nextX));
           if (nextY >= groundY) {
             let lo = 0;
             let hi = 1;
@@ -376,7 +420,7 @@ let camX = null; let camY = null;
               const mid = (lo + hi) / 2;
               const testX = prevX + dirX * step * mid;
               const testY = prevY + dirY * step * mid;
-              const testGround = terrainY(wrapX(testX));
+              const testGround = terrainY(clampX(testX));
               if (testY >= testGround) {
                 hi = mid;
                 hitX = testX;
@@ -386,7 +430,7 @@ let camX = null; let camY = null;
               }
             }
             const hitDistance = traveled + hi * step;
-            return { x: wrapX(hitX), y: hitY, distance: hitDistance };
+            return { x: clampX(hitX), y: hitY, distance: hitDistance };
           }
           traveled += step;
           prevX = nextX;
@@ -412,8 +456,9 @@ let camX = null; let camY = null;
           const sp = Math.random() * spread;
           const baseR = 10 + Math.random() * 3;            // ADJUST base dust size
           const sizeBoost = 4 * prox;                     // ADJUST proximity size gain
+          const spawnX = Math.max(0, Math.min(terrain.width, x + (Math.random() - 0.5) * 12));
           smoke.push({
-            x: x + (Math.random() - 0.5) * 12,
+            x: spawnX,
             y: y,
             vx: Math.cos(a) * sp * (Math.random()*0.6 + 0.7),
             vy: -Math.abs(Math.sin(a) * sp) * 0.3 - pushUp, // initial lift
@@ -502,10 +547,13 @@ let camX = null; let camY = null;
         ctx.fillStyle = '#332c4a';
         ctx.beginPath();
         ctx.moveTo(0, height);
-        for (let x = 0; x <= width; x += 1) {
+        for (let x = 0; x <= terrain.width; x += terrain.step) {
           ctx.lineTo(x, terrainY(x));
         }
-        ctx.lineTo(width, height);
+        if ((terrain.width % terrain.step) !== 0) {
+          ctx.lineTo(terrain.width, terrainY(terrain.width));
+        }
+        ctx.lineTo(terrain.width, height);
         ctx.closePath();
         ctx.fill();
 
@@ -524,7 +572,7 @@ let camX = null; let camY = null;
       }
 
       function drawHUD() {
-        info.textContent = `Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
+        info.textContent = `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
         if (gameOver) {
           ctx.fillStyle = '#ffffff';
           ctx.font = '16px sans-serif';
@@ -544,6 +592,7 @@ let camX = null; let camY = null;
         ctx.setTransform(1, 0, 0, 1, 0, 0); // identity transform
         ctx.globalAlpha = 1;
         const lines = [
+          `level: ${terrain.levelName}  worldWidth: ${terrain.width.toFixed(0)}  padX: ${pad.x.toFixed(1)}`,
           `camLag: ${tune.camLag.toFixed(4)}  (Q/A)`,
           `lookGainX: ${tune.lookGainX.toFixed(0)}  (W/S)`,
           `lookGainY: ${tune.lookGainY.toFixed(0)}  (E/D)`,
@@ -562,8 +611,8 @@ let camX = null; let camY = null;
         ];
         ctx.font = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
         ctx.textBaseline = 'top';
-        const pad = 8, lineH = 18;
-        const w = 420, h = lineH * lines.length + pad * 2;
+        const padInset = 8, lineH = 18;
+        const w = 420, h = lineH * lines.length + padInset * 2;
         ctx.fillStyle = 'rgba(0,0,0,0.70)';
         ctx.fillRect(10, 10, w, h);
         ctx.strokeStyle = '#88d0ff';
@@ -571,7 +620,7 @@ let camX = null; let camY = null;
         ctx.strokeRect(10.5, 10.5, w-1, h-1);
         ctx.fillStyle = '#e6f7ff';
         for (let i = 0; i < lines.length; i++) {
-          ctx.fillText(lines[i], 16, 10 + pad + lineH * i);
+          ctx.fillText(lines[i], 16, 10 + padInset + lineH * i);
         }
         // Watermark in corner
         ctx.fillStyle = '#88d0ff';
@@ -604,9 +653,18 @@ let camX = null; let camY = null;
         // update position
         lander.x += lander.vx * dt;
         lander.y += lander.vy * dt;
-        // horizontal wrap
-        if (lander.x < 0) lander.x += width;
-        if (lander.x > width) lander.x -= width;
+        // horizontal boundaries sized to the current terrain width
+        const edgePadding = 12;
+        const minX = edgePadding;
+        const maxX = Math.max(edgePadding, terrain.width - edgePadding);
+        if (lander.x < minX) {
+          lander.x = minX;
+          if (lander.vx < 0) lander.vx = -lander.vx * tune.bounce;
+        }
+        if (lander.x > maxX) {
+          lander.x = maxX;
+          if (lander.vx > 0) lander.vx = -lander.vx * tune.bounce;
+        }
         // Engine dust lifted from the ground by thrusters (emits along exhaust ray)
         // ADJUST DUST_MAX_DIST to control when dust starts appearing
         const DUST_MAX_DIST = 70; // px of vertical clearance; farther than this = no dust
@@ -652,10 +710,12 @@ let camX = null; let camY = null;
             // success
             landed = true;
             shouldRegen = true; // next reset generates a new terrain
+            nextLevelIndex = (currentLevelIndex + 1) % levels.length;
             gameOver = true;
             exploded = false;
             lander.vx = 0; lander.vy = 0; lander.angularVelocity = 0;
-            message = 'Nice landing! Press R to try a new level';
+            const upcoming = levels[nextLevelIndex].name;
+            message = `Nice landing! Press R to explore ${upcoming}`;
             spawnWinFx(lander.x, gy - 12);
             padFlash = 1200;
           } else {
@@ -683,6 +743,17 @@ let camX = null; let camY = null;
         const k = Math.min(1, dt * tune.camLag);
         camX += (targetX - camX) * k;
         camY += (targetY - camY) * k;
+        const halfViewX = width / 2;
+        if (terrain.width <= width) {
+          camX = terrain.width / 2;
+        } else {
+          const minCamX = halfViewX;
+          const maxCamX = terrain.width - halfViewX;
+          camX = Math.max(minCamX, Math.min(maxCamX, camX));
+        }
+        const groundFloor = height * 0.5;
+        const ceiling = height * 0.15;
+        camY = Math.max(ceiling, Math.min(groundFloor, camY));
         // --- End camera follow ---
         tileLayer(bgFar,  -camX * tune.parallaxFar, -camY * tune.parallaxFar);
         tileLayer(bgNear, -camX * tune.parallaxNear, -camY * tune.parallaxNear);
@@ -701,7 +772,7 @@ let camX = null; let camY = null;
         requestAnimationFrame(loop);
       }
 
-      generateTerrain();
+      generateTerrain(currentLevelIndex);
       resetGame();
       requestAnimationFrame(loop);
     })();
