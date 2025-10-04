@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Thruster dust now spawns where the exhaust ray meets the terrain, matching lander tilt.
 
+### Fixed
+
+- Text after successful landing does not signal restart.
+
 ## [0.1.0] - 2025-10-04
 
 ### Added
