@@ -354,6 +354,47 @@ let camX = null; let camY = null;
       }
 
       // --- Engine dust/smoke when close to terrain ---
+      function castThrustRay(originX, originY, dirX, dirY, maxDistance) {
+        // Ray-march the exhaust downwards until it collides with terrain.
+        if (dirY <= 0) return null;
+        const wrapX = (x) => ((x % width) + width) % width;
+        const step = Math.max(2, terrain.step * 0.5);
+        const maxSteps = Math.ceil(maxDistance / step);
+        let traveled = 0;
+        let prevX = originX;
+        let prevY = originY;
+        for (let i = 0; i < maxSteps; i++) {
+          const nextX = prevX + dirX * step;
+          const nextY = prevY + dirY * step;
+          const groundY = terrainY(wrapX(nextX));
+          if (nextY >= groundY) {
+            let lo = 0;
+            let hi = 1;
+            let hitX = nextX;
+            let hitY = groundY;
+            for (let j = 0; j < 5; j++) {
+              const mid = (lo + hi) / 2;
+              const testX = prevX + dirX * step * mid;
+              const testY = prevY + dirY * step * mid;
+              const testGround = terrainY(wrapX(testX));
+              if (testY >= testGround) {
+                hi = mid;
+                hitX = testX;
+                hitY = testGround;
+              } else {
+                lo = mid;
+              }
+            }
+            const hitDistance = traveled + hi * step;
+            return { x: wrapX(hitX), y: hitY, distance: hitDistance };
+          }
+          traveled += step;
+          prevX = nextX;
+          prevY = nextY;
+        }
+        return null;
+      }
+
       function spawnSmoke(x, y, count, spread, pushUp, prox) { // prox in [0,1] (ADJUST near emission site)
         // TUNING NOTES:
         //  - baseR: starting dust size when far; sizeBoost scales with proximity.
@@ -566,24 +607,33 @@ let camX = null; let camY = null;
         // horizontal wrap
         if (lander.x < 0) lander.x += width;
         if (lander.x > width) lander.x -= width;
-        // Engine dust lifted from the ground by thrusters (emits AT terrain)
+        // Engine dust lifted from the ground by thrusters (emits along exhaust ray)
         // ADJUST DUST_MAX_DIST to control when dust starts appearing
-        const DUST_MAX_DIST = 70; // px; farther than this = no dust
-        const groundYHere = terrainY(lander.x);
-        const dist = groundYHere - (lander.y + lander.height / 2);
+        const DUST_MAX_DIST = 70; // px of vertical clearance; farther than this = no dust
         const thrusting = !!keys['ArrowUp'] && lander.fuel > 0;
-        if (thrusting && dist > 0 && dist < DUST_MAX_DIST && !gameOver) {
-          // Proximity factor in [0,1]; stronger very close to ground
-          const prox = Math.max(0, 1 - dist / DUST_MAX_DIST);
-          const intensity = prox * prox; // ADJUST ramp shape
-          const baseCount = Math.floor(1 + intensity * 30); // ADJUST particle count curve
-          const spawnCount = Math.min(60, baseCount);
-          // emit from the terrain right under the ship
-          const emitX = lander.x;
-          const emitY = groundYHere - 2;
-          const spread = 0.02 + intensity * 0.22; // ADJUST lateral spread
-          const pushUp = 0.015 + intensity * 0.10; // ADJUST upward lift
-          spawnSmoke(emitX, emitY, spawnCount, spread, pushUp, prox);
+        if (thrusting && !gameOver) {
+          const nozzleOffset = lander.height / 2;
+          const originX = lander.x - Math.sin(lander.angle) * nozzleOffset;
+          const originY = lander.y + Math.cos(lander.angle) * nozzleOffset;
+          const dirX = -Math.sin(lander.angle);
+          const dirY = Math.cos(lander.angle);
+          const maxRayDistance = DUST_MAX_DIST / Math.max(dirY, 0.05);
+          const hit = castThrustRay(originX, originY, dirX, dirY, maxRayDistance);
+          if (hit) {
+            const verticalDrop = hit.y - originY;
+            if (verticalDrop > 0 && verticalDrop < DUST_MAX_DIST) {
+              // Proximity factor in [0,1]; stronger very close to ground
+              const prox = Math.max(0, 1 - verticalDrop / DUST_MAX_DIST);
+              const intensity = prox * prox; // ADJUST ramp shape
+              const baseCount = Math.floor(1 + intensity * 30); // ADJUST particle count curve
+              const spawnCount = Math.min(60, baseCount);
+              const emitX = hit.x;
+              const emitY = hit.y - 2;
+              const spread = 0.02 + intensity * 0.22; // ADJUST lateral spread
+              const pushUp = 0.015 + intensity * 0.10; // ADJUST upward lift
+              spawnSmoke(emitX, emitY, spawnCount, spread, pushUp, prox);
+            }
+          }
         }
         // collisions with terrain
         const gy = terrainY(lander.x);
