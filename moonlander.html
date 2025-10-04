@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Moon Lander Game</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #101420;
+      overflow: hidden;
+      color: #fafafa;
+      font-family: sans-serif;
+    }
+    #gameCanvas {
+      display: block;
+      margin: 0 auto;
+      background: transparent;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="600" height="400"></canvas>
+  <div id="info"></div>
+  <script>
+    (() => {
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const info = document.getElementById('info');
+      const width = canvas.width;
+      const height = canvas.height;
+
+      // --- Procedural terrain (peaks, valleys, and a flat pad segment) ---
+      let terrain = { samples: [], step: 4 };
+
+      function generateTerrain() {
+        const step = 4; // px between samples for the height profile
+        const cols = Math.ceil(width / step) + 1;
+        const h = new Array(cols);
+
+        // base band where terrain should live (lower half of screen)
+        const base = height * 0.70; // average height
+        const amp  = height * 0.18; // amplitude of variation
+
+        // random walk with smoothing
+        let y = base + (Math.random() * amp - amp/2) * 0.2;
+        let dy = 0;
+        for (let i = 0; i < cols; i++) {
+          dy += (Math.random() - 0.5) * 0.8;   // add a bit of trend
+          dy *= 0.9;                            // smooth trend
+          y  += dy;                             // integrate
+          // clamp into band
+          y = Math.max(height * 0.55, Math.min(height * 0.92, y));
+          h[i] = y | 0;
+        }
+
+        // create a flat segment for landing pad
+        const padW = 100; // keep in sync with pad.w
+        const padStepCount = Math.max(4, Math.round(padW / step));
+        const padStartPx = Math.floor(60 + Math.random() * (width - 60 - padW));
+        const padStartIdx = Math.floor(padStartPx / step);
+        const padY = Math.min(h[padStartIdx], h[padStartIdx + padStepCount]) | 0; // choose lower of edges
+        for (let i = 0; i < padStepCount; i++) h[padStartIdx + i] = padY;
+
+        terrain.samples = h;
+        terrain.step = step;
+
+        // update pad position to sit on top of the flat segment
+        pad.x = padStartIdx * step;
+        pad.y = padY - pad.h; // top of terrain minus pad height
+        pad.w = padW;
+      }
+
+      function terrainY(x) {
+        // linear interpolation between nearest samples
+        const step = terrain.step;
+        const idx = Math.floor(x / step);
+        const a = Math.max(0, Math.min(terrain.samples.length - 1, idx));
+        const b = Math.max(0, Math.min(terrain.samples.length - 1, idx + 1));
+        const t = (x - a * step) / step;
+        return (terrain.samples[a] * (1 - t) + terrain.samples[b] * t);
+      }
+      // --- End terrain helpers ---
+
+      // --- Parallax background images ---
+      // Place space_far.png and space_near.png next to this HTML file
+      const bgFar = new Image();  bgFar.src = 'space_far.png';   // subtle stars
+      const bgNear = new Image(); bgNear.src = 'space_near.png'; // denser stars + nebula
+
+      // Tile an image across the canvas with an offset (no global translate)
+      function tileLayer(img, offX, offY) {
+        if (!img.complete) return; // skip until loaded
+        const iw = img.width, ih = img.height;
+        // Normalize offsets to [-iw, 0) and [-ih, 0)
+        let x0 = ((offX % iw) + iw) % iw - iw;
+        let y0 = ((offY % ih) + ih) % ih - ih;
+        // Keep pixel art crisp
+        const prev = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        for (let x = x0; x < width; x += iw) {
+          for (let y = y0; y < height; y += ih) {
+            ctx.drawImage(img, x, y);
+          }
+        }
+        ctx.imageSmoothingEnabled = prev;
+      }
+      // --- End parallax helpers ---
+
+      // Game state
+      const lander = {
+        x: width / 2,
+        y: 50,
+        vx: 0,
+        vy: 0,
+        angle: 0, // in radians
+        // angular velocity accumulates when rotating; in radians per ms
+        angularVelocity: 0,
+        // rotational acceleration applied when pressing left/right; in radians per ms^2
+        rotateAccel: 0.00001,
+        // damping factor applied every frame to gradually slow rotation
+        rotateDamping: 0.99,
+        fuel: 100,
+        width: 20,
+        height: 30,
+        thrustPower: 0.0007,
+        // rotateSpeed is no longer used; we keep it commented for reference
+        // rotateSpeed: 0.04,
+      };
+
+      const pad = {
+        x: width / 2 - 50,
+        y: height - 20,
+        w: 100,
+        h: 10,
+      };
+let g = 0.00026; // gravity (tunable, slightly lower)
+      let lastTime = null;
+      let keys = {};
+let gameOver = false;
+let message = '';
+let exploded = false;
+let debris = []; // explosion pieces
+let landed = false; // success state
+let winFx = []; // celebration particles
+let padFlash = 0; // ms of pad glow remaining
+let shouldRegen = false; // regenerate terrain only after a successful landing
+let smoke = []; // engine dust/smoke particles near ground
+
+let camX = null; let camY = null;
+
+      // Live-tunable parameters and debug
+      const tune = {
+        camLag: 0.004,      // smoothing factor: k = min(1, dt*camLag)
+        lookGainX: 120,     // px per (vx) for look-ahead
+        lookGainY: 80,      // px per (vy)
+        lookCap: 80,        // max look-ahead in px
+        parallaxFar: 0.08,
+        parallaxNear: 0.18,
+        bounce: 0.35,
+        friction: 0.78,
+      };
+      let showDebug = true;
+
+      // Store keys by their .key value and handle immediate restart on R
+      window.addEventListener('keydown', (e) => {
+        keys[e.key] = true;
+        if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          resetGame();
+        }
+        // --- Tuning keys ---
+        const step = (v, s, min, max) => Math.max(min, Math.min(max, v + s));
+        switch (e.key) {
+          case 'h': case 'H': showDebug = !showDebug; break;
+          case 'q': tune.camLag = step(tune.camLag,  0.001, 0.0005, 0.02); break;
+          case 'a': tune.camLag = step(tune.camLag, -0.001, 0.0005, 0.02); break;
+          case 'w': tune.lookGainX = step(tune.lookGainX,  10, 0, 600); break;
+          case 's': tune.lookGainX = step(tune.lookGainX, -10, 0, 600); break;
+          case 'e': tune.lookGainY = step(tune.lookGainY,  10, 0, 600); break;
+          case 'd': tune.lookGainY = step(tune.lookGainY, -10, 0, 600); break;
+          case 'r': tune.lookCap   = step(tune.lookCap,    5, 0, 200); break;
+          case 'f': tune.lookCap   = step(tune.lookCap,   -5, 0, 200); break;
+          case 't': tune.parallaxFar  = step(tune.parallaxFar,  0.01, 0, 1); break;
+          case 'g': tune.parallaxFar  = step(tune.parallaxFar, -0.01, 0, 1); break;
+          case 'y': tune.parallaxNear = step(tune.parallaxNear, 0.01, 0, 1); break;
+          case 'x': tune.parallaxNear = step(tune.parallaxNear,-0.01, 0, 1); break;
+          case 'u': lander.thrustPower = step(lander.thrustPower,  0.0001, 0, 0.005); break;
+          case 'j': lander.thrustPower = step(lander.thrustPower, -0.0001, 0, 0.005); break;
+          case 'i': lander.rotateAccel = step(lander.rotateAccel,  0.0000002, 0, 0.00002); break;
+          case 'k': lander.rotateAccel = step(lander.rotateAccel, -0.0000002, 0, 0.00002); break;
+          case 'o': lander.rotateDamping = step(lander.rotateDamping,  0.01, 0.80, 1.00); break;
+          case 'l': lander.rotateDamping = step(lander.rotateDamping, -0.01, 0.80, 1.00); break;
+          case 'p': g = step(g,  0.00005, 0, 0.005); break;
+          case ';': g = step(g, -0.00005, 0, 0.005); break;
+          case 'b': tune.bounce = step(tune.bounce,  0.05, 0, 1); break;
+          case 'n': tune.bounce = step(tune.bounce, -0.05, 0, 1); break;
+          case 'm': tune.friction = step(tune.friction,  0.05, 0, 1); break;
+          case ',': tune.friction = step(tune.friction, -0.05, 0, 1); break;
+        }
+      });
+      window.addEventListener('keyup', (e) => {
+        keys[e.key] = false;
+      });
+
+      function resetGame() {
+        lander.x = width / 2;
+        lander.y = 50;
+        lander.vx = 0;
+        lander.vy = 0;
+        lander.angle = 0;
+        lander.angularVelocity = 0;
+        lander.fuel = 100;
+        gameOver = false;
+        message = '';
+        exploded = false;
+        debris = [];
+        landed = false;
+        winFx = [];
+        padFlash = 0;
+        smoke = [];
+        if (shouldRegen) { // only regenerate after a successful landing
+          generateTerrain();
+          shouldRegen = false;
+        }
+        // reset camera to new terrain context
+        camX = lander.x;
+        camY = lander.y;
+      }
+
+      function spawnExplosion(x, y, baseVx, baseVy) {
+        if (exploded) return;
+        exploded = true;
+        gameOver = true;
+        message = 'You Crashed! Press R to restart';
+        debris = [];
+        const COUNT = 40;
+        for (let i = 0; i < COUNT; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const speed = 0.05 + Math.random() * 0.25;
+          debris.push({
+            x, y,
+            vx: baseVx + Math.cos(a) * speed,
+            vy: baseVy + Math.sin(a) * speed - 0.05,
+            ang: Math.random() * Math.PI * 2,
+            angVel: (Math.random() - 0.5) * 0.01,
+            size: 8 + Math.floor(Math.random() * 5),
+            life: 800 + Math.random() * 800,
+          });
+        }
+      }
+
+      function updateDebris(dt) {
+        const BOUNCE = tune.bounce;
+        const FRIC = tune.friction;
+        for (const p of debris) {
+          p.life -= dt;
+          if (p.life <= 0) continue;
+          // physics
+          p.vy += g * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.ang += p.angVel * dt;
+          // ground collision against terrain profile
+          const gy = terrainY(p.x);
+          if (p.y + p.size >= gy) {
+            p.y = gy - p.size;
+            p.vy = -Math.abs(p.vy) * BOUNCE;
+            p.vx *= FRIC;
+          }
+          // side walls (optional, keep pieces on screen)
+          if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx) * BOUNCE; }
+          if (p.x > width) { p.x = width; p.vx = -Math.abs(p.vx) * BOUNCE; }
+        }
+        // trim dead
+        debris = debris.filter(p => p.life > 0.0);
+      }
+
+      function drawDebris() {
+        ctx.save();
+        ctx.fillStyle = '#f8d57e';
+        ctx.strokeStyle = '#b86239';
+        for (const p of debris) {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.ang);
+          ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      // Celebration particles (confetti)
+      function spawnWinFx(x, y) {
+        winFx = [];
+        const COUNT = 80;
+        const colors = ['#ffd166', '#06d6a0', '#118ab2', '#ef476f', '#ffffff'];
+        for (let i = 0; i < COUNT; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = 0.03 + Math.random() * 0.18;
+          winFx.push({
+            x, y,
+            vx: Math.cos(a) * sp,
+            vy: -0.05 - Math.random() * 0.20, // kick upward
+            ang: Math.random() * Math.PI * 2,
+            angVel: (Math.random() - 0.5) * 0.02,
+            size: 3 + (Math.random() * 3 | 0),
+            life: 1200 + Math.random() * 1200,
+            color: colors[i % colors.length],
+          });
+        }
+      }
+
+      function updateWinFx(dt) {
+        for (const p of winFx) {
+          p.life -= dt;
+          if (p.life <= 0) continue;
+          // lighter gravity for confetti
+          p.vy += (g * 0.6) * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.ang += p.angVel * dt;
+          // bounce on ground lightly
+          const gy = terrainY(p.x);
+          if (p.y + p.size >= gy) {
+            p.y = gy - p.size;
+            p.vy = -Math.abs(p.vy) * 0.25;
+            p.vx *= 0.9;
+          }
+        }
+        winFx = winFx.filter(p => p.life > 0);
+      }
+
+      function drawWinFx() {
+        if (winFx.length === 0) return;
+        ctx.save();
+        for (const p of winFx) {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.ang);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      // --- Engine dust/smoke when close to terrain ---
+      function spawnSmoke(x, y, count, spread, pushUp, prox) { // prox in [0,1] (ADJUST near emission site)
+        // TUNING NOTES:
+        //  - baseR: starting dust size when far; sizeBoost scales with proximity.
+        //  - Increase sizeBoost to make near-ground particles bigger.
+        //  - life/maxLife control how long dust lingers.
+        // Colors from light to dark gray-brown
+        const palette = [
+          [230, 230, 230, 180],
+          [200, 200, 200, 170],
+          [160, 150, 150, 160],
+          [130, 120, 110, 150]
+        ];
+        for (let i = 0; i < count; i++) {
+          const a = (Math.random() - 0.5) * Math.PI * 0.6; // lateral cone
+          const sp = Math.random() * spread;
+          const baseR = 10 + Math.random() * 3;            // ADJUST base dust size
+          const sizeBoost = 4 * prox;                     // ADJUST proximity size gain
+          smoke.push({
+            x: x + (Math.random() - 0.5) * 12,
+            y: y,
+            vx: Math.cos(a) * sp * (Math.random()*0.6 + 0.7),
+            vy: -Math.abs(Math.sin(a) * sp) * 0.3 - pushUp, // initial lift
+            r: baseR + sizeBoost,
+            life: 900 + Math.random() * 900,
+            maxLife: 900 + Math.random() * 900,
+            color: palette[(Math.random() * palette.length) | 0],
+            prox: prox
+          });
+        }
+      }
+
+      function updateSmoke(dt) {
+        for (const p of smoke) {
+          p.life -= dt;
+          if (p.life <= 0) continue;
+          // gravity and slight horizontal drag
+          p.vy += g * dt * 0.2; // very light fall
+          p.vx *= 0.995;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          // collide with ground softly
+          const gy = terrainY(p.x);
+          if (p.y + p.r >= gy) {
+            p.y = gy - p.r;
+            p.vy *= -0.15;
+            p.vx *= 0.85;
+          }
+        }
+        smoke = smoke.filter(p => p.life > 0);
+      }
+
+      function drawSmoke() {
+        if (smoke.length === 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const p of smoke) {
+          if (p.life <= 0) continue;
+          const aLife = Math.max(0, Math.min(1, p.life / p.maxLife));
+          const aProx = 0.25 + 0.75 * (p.prox || 0);    // ADJUST proximity alpha gain
+          const alpha = (p.color[3]/255) * aProx * (0.25 + 0.75 * aLife);
+          ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${alpha})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r * (1.2 - 0.6*aLife), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+      // --- End smoke helpers ---
+
+      // Draw functions
+      function drawLander() {
+        if (exploded) return;
+        ctx.save();
+        ctx.translate(lander.x, lander.y);
+        ctx.rotate(lander.angle);
+        ctx.fillStyle = '#e8e8ff';
+        ctx.beginPath();
+        ctx.moveTo(0, -lander.height / 2);
+        ctx.lineTo(-lander.width / 2, lander.height / 2);
+        ctx.lineTo(lander.width / 2, lander.height / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#c0c0f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-lander.width / 4, lander.height / 2);
+        ctx.lineTo(-lander.width / 2, lander.height / 2 + 10);
+        ctx.moveTo(lander.width / 4, lander.height / 2);
+        ctx.lineTo(lander.width / 2, lander.height / 2 + 10);
+        ctx.stroke();
+        if (keys['ArrowUp'] && lander.fuel > 0 && !gameOver) {
+          ctx.fillStyle = '#ff9933';
+          ctx.beginPath();
+          ctx.moveTo(0, lander.height / 2);
+          ctx.lineTo(-5, lander.height / 2 + 15);
+          ctx.lineTo(5, lander.height / 2 + 15);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawTerrain() {
+        // ground fill from terrain profile down to bottom of screen
+        ctx.fillStyle = '#332c4a';
+        ctx.beginPath();
+        ctx.moveTo(0, height);
+        for (let x = 0; x <= width; x += 1) {
+          ctx.lineTo(x, terrainY(x));
+        }
+        ctx.lineTo(width, height);
+        ctx.closePath();
+        ctx.fill();
+
+        // landing pad drawn on top
+        ctx.fillStyle = '#2ecc71';
+        ctx.fillRect(pad.x, pad.y, pad.w, pad.h);
+
+        if (padFlash > 0) {
+          const t = (padFlash / 1200);
+          ctx.save();
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${0.2 + 0.6 * Math.abs(Math.sin(t * Math.PI * 4))})`;
+          ctx.strokeRect(pad.x - 4, pad.y - 4, pad.w + 8, pad.h + 8);
+          ctx.restore();
+        }
+      }
+
+      function drawHUD() {
+        info.textContent = `Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
+        if (gameOver) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '16px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(message, width / 2, 28);
+        }
+      }
+
+      function drawDebugOverlay(k) {
+        // Hide the DOM info panel so it doesn't cover the canvas debug overlay
+        if (typeof info !== 'undefined' && info) {
+          info.style.display = showDebug ? 'none' : 'block';
+        }
+        if (!showDebug) return;
+        // Ensure overlay renders in screen space with full opacity
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // identity transform
+        ctx.globalAlpha = 1;
+        const lines = [
+          `camLag: ${tune.camLag.toFixed(4)}  (Q/A)`,
+          `lookGainX: ${tune.lookGainX.toFixed(0)}  (W/S)`,
+          `lookGainY: ${tune.lookGainY.toFixed(0)}  (E/D)`,
+          `lookCap: ${tune.lookCap.toFixed(0)}  (R/F)`,
+          `parallaxFar: ${tune.parallaxFar.toFixed(2)}  (T/G)`,
+          `parallaxNear: ${tune.parallaxNear.toFixed(2)}  (Y/H)`,
+          `thrustPower: ${lander.thrustPower.toFixed(4)}  (U/J)`,
+          `rotateAccel: ${lander.rotateAccel.toExponential(2)}  (I/K)`,
+          `rotateDamping: ${lander.rotateDamping.toFixed(2)}  (O/L)`,
+          `gravity g: ${g.toFixed(5)}  (P/;)`,
+          `bounce: ${tune.bounce.toFixed(2)}  (B/N)`,
+          `friction: ${tune.friction.toFixed(2)}  (M/,)`,
+          `cam: (${camX.toFixed(1)}, ${camY.toFixed(1)})  lander: (${lander.x.toFixed(1)}, ${lander.y.toFixed(1)})`,
+          `vel: (${lander.vx.toFixed(3)}, ${lander.vy.toFixed(3)})  ang: ${lander.angle.toFixed(2)}  angVel: ${lander.angularVelocity.toFixed(5)}`,
+          `Hold H to toggle this overlay. R to reset.`
+        ];
+        ctx.font = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        ctx.textBaseline = 'top';
+        const pad = 8, lineH = 18;
+        const w = 420, h = lineH * lines.length + pad * 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.70)';
+        ctx.fillRect(10, 10, w, h);
+        ctx.strokeStyle = '#88d0ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(10.5, 10.5, w-1, h-1);
+        ctx.fillStyle = '#e6f7ff';
+        for (let i = 0; i < lines.length; i++) {
+          ctx.fillText(lines[i], 16, 10 + pad + lineH * i);
+        }
+        // Watermark in corner
+        ctx.fillStyle = '#88d0ff';
+        ctx.fillText('DEBUG ON (H to hide)', 16, 12);
+        ctx.restore(); // restore identity transform state for subsequent draws
+      }
+
+      function update(dt) {
+        updateDebris(dt);
+        updateWinFx(dt);
+        updateSmoke(dt);
+        if (padFlash > 0) padFlash -= dt;
+        if (gameOver) return;
+        // rotation momentum: accelerate angular velocity when rotating and apply damping
+        if (keys['ArrowLeft']) lander.angularVelocity -= lander.rotateAccel * dt;
+        if (keys['ArrowRight']) lander.angularVelocity += lander.rotateAccel * dt;
+        lander.angularVelocity *= lander.rotateDamping;
+        lander.angle += lander.angularVelocity * dt;
+        // thrust
+        if (keys['ArrowUp'] && lander.fuel > 0) {
+          const ax = Math.sin(lander.angle) * lander.thrustPower;
+          const ay = -Math.cos(lander.angle) * lander.thrustPower;
+          lander.vx += ax * dt;
+          lander.vy += ay * dt;
+          lander.fuel -= 0.0005 * dt; // ~2x slower than previous, ~160x slower than original
+          if (lander.fuel < 0) lander.fuel = 0;
+        }
+        // gravity
+        lander.vy += g * dt;
+        // update position
+        lander.x += lander.vx * dt;
+        lander.y += lander.vy * dt;
+        // horizontal wrap
+        if (lander.x < 0) lander.x += width;
+        if (lander.x > width) lander.x -= width;
+        // Engine dust lifted from the ground by thrusters (emits AT terrain)
+        // ADJUST DUST_MAX_DIST to control when dust starts appearing
+        const DUST_MAX_DIST = 70; // px; farther than this = no dust
+        const groundYHere = terrainY(lander.x);
+        const dist = groundYHere - (lander.y + lander.height / 2);
+        const thrusting = !!keys['ArrowUp'] && lander.fuel > 0;
+        if (thrusting && dist > 0 && dist < DUST_MAX_DIST && !gameOver) {
+          // Proximity factor in [0,1]; stronger very close to ground
+          const prox = Math.max(0, 1 - dist / DUST_MAX_DIST);
+          const intensity = prox * prox; // ADJUST ramp shape
+          const baseCount = Math.floor(1 + intensity * 30); // ADJUST particle count curve
+          const spawnCount = Math.min(60, baseCount);
+          // emit from the terrain right under the ship
+          const emitX = lander.x;
+          const emitY = groundYHere - 2;
+          const spread = 0.02 + intensity * 0.22; // ADJUST lateral spread
+          const pushUp = 0.015 + intensity * 0.10; // ADJUST upward lift
+          spawnSmoke(emitX, emitY, spawnCount, spread, pushUp, prox);
+        }
+        // collisions with terrain
+        const gy = terrainY(lander.x);
+        if (lander.y + lander.height / 2 >= gy) {
+          // place on ground for checks
+          lander.y = gy - lander.height / 2;
+          const speed = Math.hypot(lander.vx, lander.vy);
+          // Easier landing thresholds: ~15° upright, lower speeds
+          const uprightTol = 0.26; // radians (~15°)
+          const uprightNow = (Math.abs(((lander.angle % (Math.PI*2)) + Math.PI*2) % (Math.PI*2)) < uprightTol) || (Math.abs(((lander.angle % (Math.PI*2)) + Math.PI*2) % (Math.PI*2)) > Math.PI*2 - uprightTol);
+          const onPad = lander.x > pad.x && lander.x < pad.x + pad.w;
+          const okSpeed = speed < 0.09;
+          const okVx = Math.abs(lander.vx) < 0.07;
+          const okVy = lander.vy < 0.07;
+          if (onPad && uprightNow && okSpeed && okVx && okVy) {
+            // success
+            landed = true;
+            shouldRegen = true; // next reset generates a new terrain
+            gameOver = true;
+            exploded = false;
+            lander.vx = 0; lander.vy = 0; lander.angularVelocity = 0;
+            message = 'Nice landing! Press R to restart';
+            spawnWinFx(lander.x, gy - 12);
+            padFlash = 1200;
+          } else {
+            spawnExplosion(lander.x, lander.y, lander.vx, lander.vy);
+          }
+        }
+      }
+
+      function loop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = timestamp - lastTime;
+        lastTime = timestamp;
+        update(dt);
+        ctx.clearRect(0, 0, width, height);
+        // solid sky so CSS doesn’t bleed through
+        ctx.fillStyle = '#000010';
+        ctx.fillRect(0, 0, width, height);
+        // Parallax background in screen space (no camera transforms here)
+        // --- Camera follow with smoothing and look-ahead ---
+        if (camX === null) { camX = lander.x; camY = lander.y; }
+        const lookX = Math.max(-tune.lookCap, Math.min(tune.lookCap, lander.vx * tune.lookGainX));
+        const lookY = Math.max(-tune.lookCap, Math.min(tune.lookCap, lander.vy * tune.lookGainY));
+        const targetX = lander.x + lookX;
+        const targetY = lander.y + lookY;
+        const k = Math.min(1, dt * tune.camLag);
+        camX += (targetX - camX) * k;
+        camY += (targetY - camY) * k;
+        // --- End camera follow ---
+        tileLayer(bgFar,  -camX * tune.parallaxFar, -camY * tune.parallaxFar);
+        tileLayer(bgNear, -camX * tune.parallaxNear, -camY * tune.parallaxNear);
+
+        // Center the world so the lander stays in the middle
+        ctx.save();
+        ctx.translate(width / 2 - camX, height / 2 - camY);
+        drawTerrain();
+        drawSmoke();
+        drawLander();
+        drawDebris();
+        drawWinFx();
+        ctx.restore();
+        drawHUD();
+        drawDebugOverlay(k);
+        requestAnimationFrame(loop);
+      }
+
+      generateTerrain();
+      resetGame();
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
