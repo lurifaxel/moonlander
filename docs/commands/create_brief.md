@@ -6,4 +6,4 @@ Please create a product brief based on the description that the user provides. Y
 4. High-level tech/architecture used
 
 Keep the brief very concise and to the point just to give enough context to understand the bigger picture.
-Write the document into docs/PRODUCT_BRIEF.md (unless a different file name is specified)
+Write the document into docs/product_brief.md (unless a different file name is specified)
