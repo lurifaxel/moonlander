@@ -202,6 +202,8 @@ let shouldRegen = false; // regenerate terrain only after a successful landing
 let padPulsePhase = 0;
 let padGlowAlpha = 0.525;
 let smoke = []; // engine dust/smoke particles near ground
+let blastSmoke = []; // post-explosion embers smoke
+let wreckFlames = []; // persistent burning wreckage
 
 let camX = null; let camY = null;
 
@@ -551,6 +553,8 @@ let camX = null; let camY = null;
         winFx = [];
         padFlash = 0;
         smoke = [];
+        blastSmoke = [];
+        wreckFlames = [];
         audio.reset();
         // reset camera to new terrain context
         camX = lander.x;
@@ -566,19 +570,119 @@ let camX = null; let camY = null;
         audio.playExplosion();
         audio.playDeathTone();
         debris = [];
-        const COUNT = 40;
-        for (let i = 0; i < COUNT; i++) {
-          const a = Math.random() * Math.PI * 2;
-          const speed = 0.05 + Math.random() * 0.25;
+
+        const pushOut = (speedMin, speedRange) => speedMin + Math.random() * speedRange;
+        const randomUpVector = (jitter = 0.25) => {
+          const angle = (Math.random() - 0.5) * Math.PI; // -90°..+90° around upward axis
+          let dirX = Math.sin(angle);
+          let dirY = -Math.cos(angle);
+          dirY += (Math.random() - 0.5) * jitter;
+          if (dirY > -0.05) dirY = -0.05 - Math.random() * 0.35;
+          const mag = Math.hypot(dirX, dirY) || 1;
+          return { dirX: dirX / mag, dirY: dirY / mag };
+        };
+
+        const coreCount = 1 + (Math.random() * 2 | 0);
+        for (let i = 0; i < coreCount; i++) {
+          const radius = 48 + Math.random() * 20;
+          const life = 1600 + Math.random() * 900;
+          const dir = randomUpVector(0.18);
+          const speed = pushOut(0.32, 0.36);
           debris.push({
-            x, y,
-            vx: baseVx + Math.cos(a) * speed,
-            vy: baseVy + Math.sin(a) * speed - 0.05,
-            ang: Math.random() * Math.PI * 2,
-            angVel: (Math.random() - 0.5) * 0.01,
-            size: 8 + Math.floor(Math.random() * 5),
-            life: 800 + Math.random() * 800,
+            x,
+            y,
+            vx: baseVx * 0.25 + dir.dirX * speed,
+            vy: baseVy * 0.18 + dir.dirY * speed,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 1.2,
+            kind: 'core',
           });
+        }
+
+        const shardCount = 46 + Math.floor(Math.random() * 24);
+        for (let i = 0; i < shardCount; i++) {
+          const dir = randomUpVector(0.32);
+          const speed = pushOut(0.22, 0.42);
+          const radius = 12 + Math.random() * 12;
+          const life = 1200 + Math.random() * 880;
+          debris.push({
+            x,
+            y,
+            vx: baseVx * 0.25 + dir.dirX * speed,
+            vy: baseVy * 0.18 + dir.dirY * speed,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 0.85 + Math.random() * 0.4,
+            kind: 'shard',
+          });
+        }
+
+        const emberCount = 28 + Math.floor(Math.random() * 18);
+        for (let i = 0; i < emberCount; i++) {
+          const dir = randomUpVector(0.42);
+          const speed = pushOut(0.14, 0.3);
+          const radius = 6 + Math.random() * 6;
+          const life = 900 + Math.random() * 660;
+          debris.push({
+            x,
+            y,
+            vx: baseVx * 0.25 + dir.dirX * speed,
+            vy: baseVy * 0.18 + dir.dirY * speed,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 0.6 + Math.random() * 0.3,
+            kind: 'ember',
+          });
+        }
+
+        const smokeCount = 34 + Math.floor(Math.random() * 22);
+        for (let i = 0; i < smokeCount; i++) {
+          const spread = (Math.random() - 0.5) * 120;
+          const spawnX = Math.max(0, Math.min(terrain.width, x + spread));
+          const groundY = terrainY(spawnX);
+          const radius = 18 + Math.random() * 18;
+          const life = 2200 + Math.random() * 1800;
+          const rise = 0.012 + Math.random() * 0.018;
+          const bias = Math.random() * 0.55 + 0.65;
+          blastSmoke.push({
+            x: spawnX,
+            y: groundY - radius * bias,
+            vx: baseVx * 0.22 + (Math.random() - 0.5) * 0.12,
+            vy: -rise,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            heat: 0.75 + Math.random() * 0.35,
+            source: 'blast',
+          });
+        }
+
+        const wreckCount = 3 + (Math.random() * 3 | 0);
+        for (let i = 0; i < wreckCount; i++) {
+          const spread = (Math.random() - 0.5) * 50;
+          const px = Math.max(0, Math.min(terrain.width, x + spread));
+          const gy = terrainY(px);
+          const baseRadius = 14 + Math.random() * 12;
+          wreckFlames.push({
+            x: px,
+            y: gy - baseRadius * (0.52 + Math.random() * 0.16),
+            radius: baseRadius,
+            heat: 0.9 + Math.random() * 0.15,
+            pulse: Math.random() * Math.PI * 2,
+            flicker: Math.random() * 0.4,
+            smokeTimer: 120 + Math.random() * 200,
+          });
+        }
+        if (wreckFlames.length > 12) {
+          wreckFlames.splice(0, wreckFlames.length - 12);
         }
       }
 
@@ -588,16 +692,24 @@ let camX = null; let camY = null;
         for (const p of debris) {
           p.life -= dt;
           if (p.life <= 0) continue;
+
+          const lifeRatio = Math.max(0, p.life / p.lifeStart);
+          const shrinkCurve = p.kind === 'core' ? 0.52 : p.kind === 'shard' ? 0.7 : 0.82;
+          const scale = 0.35 + 0.65 * Math.pow(lifeRatio, shrinkCurve);
+          p.radius = p.radiusStart * scale;
+
           // physics
+          const driftDamp = p.kind === 'ember' ? 0.993 : 0.997;
           p.vy += g * dt;
+          p.vx *= driftDamp;
           p.x += p.vx * dt;
           p.y += p.vy * dt;
-          p.ang += p.angVel * dt;
+
           // ground collision against terrain profile
           const gy = terrainY(p.x);
-          if (p.y + p.size >= gy) {
-            p.y = gy - p.size;
-            p.vy = -Math.abs(p.vy) * BOUNCE;
+          if (p.y + p.radius >= gy) {
+            p.y = gy - p.radius;
+            p.vy = -Math.abs(p.vy) * (0.35 + BOUNCE * 0.65);
             p.vx *= FRIC;
           }
           // side walls (optional, keep pieces on screen)
@@ -605,19 +717,168 @@ let camX = null; let camY = null;
           if (p.x > terrain.width) { p.x = terrain.width; p.vx = -Math.abs(p.vx) * BOUNCE; }
         }
         // trim dead
-        debris = debris.filter(p => p.life > 0.0);
+        debris = debris.filter(p => p.life > 0.0 && p.radius > 0.4);
+      }
+
+      function clamp01(v) {
+        return v < 0 ? 0 : v > 1 ? 1 : v;
+      }
+
+      function heatColor(t, glowBias) {
+        const mix = Math.pow(clamp01(t), 0.65);
+        const flare = (1 - mix) * glowBias;
+        const g = 244 - mix * 170 + flare * 28;
+        const b = 195 - Math.pow(mix, 1.15) * 160 + flare * 12;
+        return {
+          r: 255,
+          g: Math.max(0, Math.min(255, Math.round(g))),
+          b: Math.max(0, Math.min(255, Math.round(b))),
+        };
+      }
+
+      function updateBlastSmoke(dt) {
+        for (const p of blastSmoke) {
+          p.life -= dt;
+          if (p.life <= 0) continue;
+          const lifeRatio = Math.max(0, p.life / p.lifeStart);
+          const growthBase = p.source === 'wreck' ? 1.35 : 1.1;
+          const growth = 1 + (1 - lifeRatio) * growthBase;
+          p.radius = p.radiusStart * growth;
+          const buoyancy = p.source === 'wreck' ? -g * 0.28 : g * 0.07;
+          p.vy += buoyancy * dt;
+          if (p.source === 'wreck') {
+            if (p.vy > -0.008) p.vy = -0.008;
+            if (p.vy < -0.08) p.vy = -0.08;
+            p.vx *= 0.9985;
+          } else {
+            if (p.vy < -0.035) p.vy = -0.035;
+            p.vx *= 0.997;
+          }
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          const gy = terrainY(p.x);
+          if (p.y + p.radius >= gy) {
+            p.y = gy - p.radius;
+            p.vy *= -0.1;
+            p.vx *= 0.88;
+          }
+        }
+        blastSmoke = blastSmoke.filter(p => p.life > 0 && p.radius > 0.5);
+      }
+
+      function updateWreckFlames(dt) {
+        if (wreckFlames.length === 0) return;
+        const seconds = dt / 1000;
+        for (const f of wreckFlames) {
+          f.pulse += seconds * (2.1 + Math.random() * 0.9);
+          const flickerTarget = 0.35 + Math.random() * 0.4;
+          f.flicker += (flickerTarget - f.flicker) * 0.16;
+          const heatTarget = 0.72 + Math.random() * 0.2;
+          f.heat += (heatTarget - f.heat) * 0.05;
+          f.smokeTimer -= dt;
+          if (f.smokeTimer <= 0) {
+            const radius = 14 + Math.random() * 12;
+            const life = 5200 + Math.random() * 2800;
+            blastSmoke.push({
+              x: f.x + (Math.random() - 0.5) * 6,
+              y: f.y - f.radius * 0.35,
+              vx: (Math.random() - 0.5) * 0.05,
+              vy: -0.009 - Math.random() * 0.009,
+              radius,
+              radiusStart: radius,
+              life,
+              lifeStart: life,
+              heat: 0.52 + Math.random() * 0.24,
+              source: 'wreck',
+            });
+            f.smokeTimer = 360 + Math.random() * 440;
+          }
+        }
       }
 
       function drawDebris() {
         ctx.save();
-        ctx.fillStyle = '#f8d57e';
-        ctx.strokeStyle = '#b86239';
+        ctx.globalCompositeOperation = 'lighter';
         for (const p of debris) {
-          ctx.save();
-          ctx.translate(p.x, p.y);
-          ctx.rotate(p.ang);
-          ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
-          ctx.restore();
+          if (p.life <= 0 || p.radius <= 0.4) continue;
+          const progress = 1 - clamp01(p.life / p.lifeStart);
+          const { r, g, b } = heatColor(progress, p.glowBias);
+          const alpha = Math.min(1, 0.85 * (1 - progress * 0.35) * p.glowBias);
+          const glowRadius = p.radius * (p.kind === 'core' ? 1.9 : 1.35);
+          const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowRadius);
+          gradient.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+          gradient.addColorStop(0.35, `rgba(${r},${g},${b},${alpha * 0.7})`);
+          gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, glowRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          const coreRadius = Math.max(1.5, p.radius * 0.52);
+          const coreAlpha = Math.min(1, alpha * 1.08);
+          ctx.fillStyle = `rgba(255,${Math.round(Math.min(255, g + 20))},${Math.round(Math.min(255, b + 40))},${coreAlpha})`;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, coreRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawBlastSmoke() {
+        if (blastSmoke.length === 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        for (const p of blastSmoke) {
+          if (p.life <= 0) continue;
+          const lifeRatio = clamp01(p.life / p.lifeStart);
+          const expo = p.source === 'wreck' ? 0.58 : 0.75;
+          const heat = Math.pow(lifeRatio, expo);
+          const r = Math.max(0, Math.min(255, Math.round(118 * heat * p.heat)));
+          const g = Math.max(0, Math.min(255, Math.round(48 * heat * (p.source === 'wreck' ? 0.9 : 0.7))));
+          const b = Math.max(0, Math.min(255, Math.round(44 * heat * (p.source === 'wreck' ? 0.75 : 0.6))));
+          const alphaBase = p.source === 'wreck' ? 0.32 : 0.28;
+          const centerAlpha = Math.min(0.88, alphaBase + 0.72 * Math.pow(lifeRatio, 0.5) * p.heat);
+          const midAlpha = centerAlpha * 0.68;
+          const radius = p.radius * (1.0 + (1 - lifeRatio) * (p.source === 'wreck' ? 0.55 : 0.42));
+          const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
+          gradient.addColorStop(0, `rgba(${r},${g},${b},${centerAlpha})`);
+          gradient.addColorStop(0.45, `rgba(${r},${g},${b},${midAlpha})`);
+          gradient.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawWreckFlames() {
+        if (wreckFlames.length === 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const f of wreckFlames) {
+          const pulse = Math.sin(f.pulse) * 0.5 + 0.5;
+          const flameRadius = f.radius * (0.78 + pulse * 0.5 + f.flicker * 0.15);
+          const flameHeat = Math.min(1, f.heat + pulse * 0.2);
+          const r = 255;
+          const g = Math.round(210 * flameHeat + 40 * (1 - flameHeat));
+          const b = Math.round(120 * (1 - flameHeat * 0.8));
+          const alphaCore = 0.82 * (0.7 + pulse * 0.3);
+          const alphaEdge = alphaCore * 0.55;
+          const gradient = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, flameRadius);
+          gradient.addColorStop(0, `rgba(${r},${g},${b},${alphaCore})`);
+          gradient.addColorStop(0.55, `rgba(${r},${g},${b},${alphaEdge})`);
+          gradient.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, flameRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          const coalRadius = Math.max(4, f.radius * 0.45);
+          ctx.fillStyle = `rgba(90,40,25,0.55)`;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y + coalRadius * 0.4, coalRadius, 0, Math.PI * 2);
+          ctx.fill();
         }
         ctx.restore();
       }
@@ -952,6 +1213,8 @@ let camX = null; let camY = null;
 
       function update(dt) {
         updateDebris(dt);
+        updateWreckFlames(dt);
+        updateBlastSmoke(dt);
         updateWinFx(dt);
         updateSmoke(dt);
         if (padFlash > 0) padFlash -= dt;
@@ -1115,6 +1378,8 @@ let camX = null; let camY = null;
         ctx.translate(width / 2 - camX, height / 2 - camY);
         drawTerrain();
         drawSmoke();
+        drawBlastSmoke();
+        drawWreckFlames();
         drawLander();
         drawDebris();
         drawWinFx();
