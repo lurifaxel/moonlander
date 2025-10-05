@@ -481,7 +481,9 @@ let camX = null; let camY = null;
         bounce: 0.35,
         friction: 0.78,
       };
-      let showDebug = true;
+      
+      // Debug overlay is off by default
+      let showDebug = false;
 
       // Store keys by their .key value and handle immediate restart on R
       window.addEventListener('keydown', (e) => {
