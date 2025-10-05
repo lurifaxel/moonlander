@@ -231,23 +231,53 @@ let camX = null; let camY = null;
           return state.ctx;
         }
 
+        function createNoiseBuffer(ctx) {
+          const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < data.length; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          return buffer;
+        }
+
         function ensureThruster() {
           const ctx = ensureContext();
           if (!ctx) return null;
           if (!state.thruster.osc) {
-            const osc = ctx.createOscillator();
-            osc.type = 'sawtooth';
+            const mainOsc = ctx.createOscillator();
+            mainOsc.type = 'sawtooth';
+            const harmOsc = ctx.createOscillator();
+            harmOsc.type = 'triangle';
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 420;
-            filter.Q.value = 1.1;
+            filter.frequency.value = 720;
+            filter.Q.value = 0.9;
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'bandpass';
+            noiseFilter.frequency.value = 1400;
+            noiseFilter.Q.value = 0.6;
             const gain = ctx.createGain();
             gain.gain.value = 0;
-            osc.connect(filter);
+
+            const noise = ctx.createBufferSource();
+            noise.buffer = createNoiseBuffer(ctx);
+            noise.loop = true;
+
+            mainOsc.connect(filter);
+            harmOsc.connect(filter);
+            noise.connect(noiseFilter);
+            noiseFilter.connect(filter);
             filter.connect(gain);
             gain.connect(state.master);
-            osc.start();
-            state.thruster.osc = osc;
+
+            mainOsc.start();
+            harmOsc.start();
+            noise.start();
+
+            state.thruster.osc = mainOsc;
+            state.thruster.harm = harmOsc;
+            state.thruster.noise = noise;
+            state.thruster.noiseFilter = noiseFilter;
             state.thruster.filter = filter;
             state.thruster.gain = gain;
           }
@@ -308,8 +338,14 @@ let camX = null; let camY = null;
             rampGain(thruster.gain, target, on ? 0.05 : 0.08);
             if (on) {
               const now = state.ctx.currentTime;
-              thruster.osc.frequency.setTargetAtTime(110, now, 0.2);
-              thruster.filter.frequency.setTargetAtTime(520, now, 0.3);
+              const baseFreq = 150;
+              const jitter = (Math.random() - 0.5) * 12;
+              thruster.osc.frequency.setTargetAtTime(baseFreq + jitter, now, 0.12);
+              thruster.harm.frequency.setTargetAtTime((baseFreq * 1.9) + jitter * 0.4, now, 0.12);
+              thruster.osc.detune.setTargetAtTime((Math.random() - 0.5) * 40, now, 0.3);
+              thruster.harm.detune.setTargetAtTime((Math.random() - 0.5) * 20, now, 0.25);
+              thruster.filter.frequency.setTargetAtTime(880 + Math.random() * 140, now, 0.25);
+              thruster.noiseFilter.frequency.setTargetAtTime(1200 + Math.random() * 400, now, 0.18);
             }
             thruster.active = on;
           },
