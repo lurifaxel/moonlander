@@ -203,7 +203,7 @@ let camX = null; let camY = null;
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         const levels = {
           master: 0.4,
-          thruster: 0.22,
+          thruster: 0.27,
           explosion: 0.9,
           death: 0.3,
           win: 0.28,
@@ -215,6 +215,7 @@ let camX = null; let camY = null;
           thruster: {
             osc: null,
             gain: null,
+            noiseGain: null,
             filter: null,
             active: false,
           },
@@ -247,28 +248,36 @@ let camX = null; let camY = null;
             const mainOsc = ctx.createOscillator();
             mainOsc.type = 'sawtooth';
             const harmOsc = ctx.createOscillator();
-            harmOsc.type = 'triangle';
+            harmOsc.type = 'square';
+
             const filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.value = 720;
-            filter.Q.value = 0.9;
-            const noiseFilter = ctx.createBiquadFilter();
-            noiseFilter.type = 'bandpass';
-            noiseFilter.frequency.value = 1400;
-            noiseFilter.Q.value = 0.6;
-            const gain = ctx.createGain();
-            gain.gain.value = 0;
+            filter.frequency.value = 1600;
+            filter.Q.value = 0.7;
+
+            const bodyGain = ctx.createGain();
+            bodyGain.gain.value = 0;
 
             const noise = ctx.createBufferSource();
             noise.buffer = createNoiseBuffer(ctx);
             noise.loop = true;
 
+            const noiseFilter = ctx.createBiquadFilter();
+            noiseFilter.type = 'highpass';
+            noiseFilter.frequency.value = 2200;
+            noiseFilter.Q.value = 0.9;
+
+            const noiseGain = ctx.createGain();
+            noiseGain.gain.value = 0;
+
             mainOsc.connect(filter);
             harmOsc.connect(filter);
+            filter.connect(bodyGain);
+            bodyGain.connect(state.master);
+
             noise.connect(noiseFilter);
-            noiseFilter.connect(filter);
-            filter.connect(gain);
-            gain.connect(state.master);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(state.master);
 
             mainOsc.start();
             harmOsc.start();
@@ -279,7 +288,8 @@ let camX = null; let camY = null;
             state.thruster.noise = noise;
             state.thruster.noiseFilter = noiseFilter;
             state.thruster.filter = filter;
-            state.thruster.gain = gain;
+            state.thruster.gain = bodyGain;
+            state.thruster.noiseGain = noiseGain;
           }
           return state.thruster;
         }
@@ -334,18 +344,30 @@ let camX = null; let camY = null;
             if (!thruster) return;
             if (state.ctx.state === 'suspended') return;
             if (thruster.active === on) return;
-            const target = on ? levels.thruster : 0.0001;
-            rampGain(thruster.gain, target, on ? 0.05 : 0.08);
+            const targetBody = on ? levels.thruster : 0.0001;
+            const targetNoise = on ? levels.thruster * 0.75 : 0.0001;
+            rampGain(thruster.gain, targetBody, on ? 0.07 : 0.08);
+            if (thruster.noiseGain) {
+              rampGain(thruster.noiseGain, targetNoise, on ? 0.12 : 0.09);
+            }
             if (on) {
               const now = state.ctx.currentTime;
-              const baseFreq = 150;
-              const jitter = (Math.random() - 0.5) * 12;
-              thruster.osc.frequency.setTargetAtTime(baseFreq + jitter, now, 0.12);
-              thruster.harm.frequency.setTargetAtTime((baseFreq * 1.9) + jitter * 0.4, now, 0.12);
-              thruster.osc.detune.setTargetAtTime((Math.random() - 0.5) * 40, now, 0.3);
-              thruster.harm.detune.setTargetAtTime((Math.random() - 0.5) * 20, now, 0.25);
-              thruster.filter.frequency.setTargetAtTime(880 + Math.random() * 140, now, 0.25);
-              thruster.noiseFilter.frequency.setTargetAtTime(1200 + Math.random() * 400, now, 0.18);
+              const baseFreq = 260 + Math.random() * 30;
+              const jitter = (Math.random() - 0.5) * 25;
+              thruster.osc.frequency.setTargetAtTime(baseFreq + jitter, now, 0.18);
+              thruster.harm.frequency.setTargetAtTime((baseFreq * 1.95) + jitter * 0.5, now, 0.18);
+              thruster.osc.detune.setTargetAtTime((Math.random() - 0.5) * 70, now, 0.35);
+              thruster.harm.detune.setTargetAtTime((Math.random() - 0.5) * 45, now, 0.3);
+              thruster.filter.frequency.setTargetAtTime(2200 + Math.random() * 600, now, 0.28);
+              if (thruster.filter.Q) {
+                thruster.filter.Q.cancelScheduledValues(now);
+                thruster.filter.Q.setTargetAtTime(0.8 + Math.random() * 0.25, now, 0.3);
+              }
+              thruster.noiseFilter.frequency.setTargetAtTime(3200 + Math.random() * 900, now, 0.3);
+              if (thruster.noiseFilter.Q) {
+                thruster.noiseFilter.Q.cancelScheduledValues(now);
+                thruster.noiseFilter.Q.setTargetAtTime(0.9 + Math.random() * 0.4, now, 0.25);
+              }
             }
             thruster.active = on;
           },
@@ -356,6 +378,10 @@ let camX = null; let camY = null;
             const now = ctx.currentTime;
             state.thruster.gain.gain.cancelScheduledValues(now);
             state.thruster.gain.gain.setValueAtTime(0.0001, now);
+            if (state.thruster.noiseGain) {
+              state.thruster.noiseGain.gain.cancelScheduledValues(now);
+              state.thruster.noiseGain.gain.setValueAtTime(0.0001, now);
+            }
             state.thruster.active = false;
           },
           playExplosion() {
