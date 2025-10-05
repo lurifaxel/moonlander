@@ -740,7 +740,18 @@ let camX = null; let camY = null;
           const baseR = 8 + Math.random() * 6;            // broader base dust size range
           const sizeJitter = 0.6 + Math.random() * 1.4;   // vary dust scale per particle
           const sizeBoost = 4 * prox;                     // ADJUST proximity size gain
+          const radius = (baseR + sizeBoost) * sizeJitter;
           const spawnX = Math.max(0, Math.min(terrain.width, x + (Math.random() - 0.5) * 12));
+          const groundY = terrainY(spawnX);
+          const biasDepth = radius * (0.35 + Math.random() * 0.55);
+          const surfaceChance = 0.18;
+          const buryDepth = Math.random() < surfaceChance ? Math.random() * radius * 0.25 : biasDepth;
+          let bottom = groundY + buryDepth;
+          bottom += (Math.random() - 0.5) * radius * 0.28;       // jitter contact height slightly while staying beneath
+          bottom = Math.max(bottom, groundY);                    // never float above the surface
+          bottom = Math.min(bottom, groundY + radius * 1.6);     // allow deeper default placement without going extreme
+          let spawnY = bottom - radius;
+          spawnY = Math.min(spawnY, y);
           const liftMix = Math.min(0.40, 0.12 + prox * 0.26 + Math.random() * 0.16);
           const shadowBias = -10 + Math.random() * 12; // skew darker but allow some lift
           const brightMix = Math.random() < 0.45 ? (0.3 + Math.random() * 0.45) * (0.45 + prox * 0.55) : 0;
@@ -755,14 +766,26 @@ let camX = null; let camY = null;
             return Math.round(Math.max(0, Math.min(255, value)));
           });
           const alpha = Math.min(230, 140 + Math.random() * 60 + prox * 40);
+          const vx = Math.cos(a) * sp * (Math.random()*0.6 + 0.7);
+          const rawLift = Math.abs(Math.sin(a) * sp) * 0.2 + pushUp * 0.45; // base upward impulse from thrust cone
+          const cappedLift = Math.min(rawLift, 0.06 + prox * 0.06);         // cap so particles never launch far
+          let vy = Math.random() * 0.05;                                    // slight downward drift to hug surface
+          vy -= cappedLift;
+          vy = Math.max(vy, -0.025 - prox * 0.045);                         // limit upward velocity (negative is upward)
+          vy = Math.min(vy, 0.07 + prox * 0.05);                            // keep downward speed gentle
+          const lifeBase = 3000 + prox * 520;
+          const lifeVariance = 0.45 + Math.random() * 1.75;
+          const lifeJitter = Math.random() * 360 - Math.random() * 220;
+          const life = Math.max(420, lifeBase * lifeVariance + lifeJitter);
+          const maxLife = life * (1.05 + Math.random() * 0.7);
           smoke.push({
             x: spawnX,
-            y: y,
-            vx: Math.cos(a) * sp * (Math.random()*0.6 + 0.7),
-            vy: -Math.abs(Math.sin(a) * sp) * 0.3 - pushUp, // initial lift
-            r: (baseR + sizeBoost) * sizeJitter,
-            life: 900 + Math.random() * 900,
-            maxLife: 900 + Math.random() * 900,
+            y: spawnY,
+            vx,
+            vy,
+            r: radius,
+            life,
+            maxLife,
             color: [...tint, alpha],
             prox: prox
           });
