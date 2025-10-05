@@ -91,6 +91,8 @@
       const BOMB_SELF_PUSH = 18;      // px upward nudge if lander inside blast
       const BOMB_MAX_ACTIVE = 6;      // limit simultaneous live bombs to keep perf stable
       const BOMB_DROP_COOLDOWN = 220; // ms cooldown between drops
+      const BOMB_CHAIN_RADIUS = 86;   // px radius within which blasts trigger other bombs
+      const EXPLOSION_KILL_RADIUS = 74; // px radius that destroys the lander from a blast
       const CRASH_CRATER_RADIUS = 78; // px terrain deformation from crashing
       const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
 
@@ -755,6 +757,8 @@ let camX = null; let camY = null;
         if (wreckFlames.length > 12) {
           wreckFlames.splice(0, wreckFlames.length - 12);
         }
+
+        applyExplosionEffects(x, craterFloorY);
       }
 
       function updateDebris(dt) {
@@ -1095,6 +1099,32 @@ let camX = null; let camY = null;
         ctx.restore();
       }
 
+      function checkLanderExplosion(x, y) {
+        if (exploded || gameOver) return;
+        const dx = lander.x - x;
+        const dy = lander.y - y;
+        if (dx * dx + dy * dy <= EXPLOSION_KILL_RADIUS * EXPLOSION_KILL_RADIUS) {
+          spawnExplosion(lander.x, lander.y, lander.vx, lander.vy);
+        }
+      }
+
+      function applyExplosionEffects(x, y, sourceBomb = null) {
+        if (bombs.length > 0) {
+          const chainRadiusSq = BOMB_CHAIN_RADIUS * BOMB_CHAIN_RADIUS;
+          for (const other of bombs) {
+            if (other === sourceBomb) continue;
+            if (!other || other.detonated) continue;
+            if (other.armingMs > 0) continue;
+            const dx = other.x - x;
+            const dy = other.y - y;
+            if (dx * dx + dy * dy <= chainRadiusSq) {
+              explodeBomb(other);
+            }
+          }
+        }
+        checkLanderExplosion(x, y);
+      }
+
       function explodeBomb(bomb) {
         if (!bomb || bomb.detonated) return;
         bomb.detonated = true;
@@ -1167,6 +1197,8 @@ let camX = null; let camY = null;
         }
 
         deformTerrainAt(x, BOMB_MAX_RADIUS, BOMB_MAX_DEPTH);
+        const blastY = terrainY(x);
+        applyExplosionEffects(x, blastY, bomb);
       }
 
       function deformTerrainAt(x, radius, depth) {
