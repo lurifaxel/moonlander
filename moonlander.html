@@ -81,6 +81,7 @@
 
       let terrain = { samples: [], step: 4, width: width, levelName: levels[0].name };
       const pad = { x: 0, y: 0, w: 110, h: 10 };
+      const PAD_PULSE_PERIOD = 3000; // ms for a full pad glow cycle
 
       function generateTerrain(index = currentLevelIndex) {
         currentLevelIndex = index;
@@ -198,6 +199,8 @@ let landed = false; // success state
 let winFx = []; // celebration particles
 let padFlash = 0; // ms of pad glow remaining
 let shouldRegen = false; // regenerate terrain only after a successful landing
+let padPulsePhase = 0;
+let padGlowAlpha = 0.525;
 let smoke = []; // engine dust/smoke particles near ground
 
 let camX = null; let camY = null;
@@ -833,7 +836,7 @@ let camX = null; let camY = null;
         ctx.fill();
 
         // landing pad drawn on top
-        ctx.fillStyle = '#2ecc71';
+        ctx.fillStyle = `rgba(46, 204, 113, ${padGlowAlpha})`;
         ctx.fillRect(pad.x, pad.y, pad.w, pad.h);
 
         if (padFlash > 0) {
@@ -908,6 +911,8 @@ let camX = null; let camY = null;
         updateWinFx(dt);
         updateSmoke(dt);
         if (padFlash > 0) padFlash -= dt;
+        padPulsePhase = (padPulsePhase + (dt / PAD_PULSE_PERIOD) * Math.PI * 2) % (Math.PI * 2);
+        padGlowAlpha = 0.525 + 0.325 * Math.sin(padPulsePhase);
         if (gameOver) {
           audio.setThrusterActive(false);
           return;
