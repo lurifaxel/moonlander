@@ -13,7 +13,7 @@ A 2D lunar-lander style game with cartoon physics:
 - Level regeneration **only after** a successful landing.
 
 ## Run
-Open `moonlander.html` in a modern browser (Chrome/Firefox). No build step.
+Open `index.html` in a modern browser (Chrome/Firefox). No build step.
 
 ## Controls
 - **↑**: Main engine thrust
