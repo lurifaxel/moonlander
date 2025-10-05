@@ -724,28 +724,46 @@ let camX = null; let camY = null;
         //  - baseR: starting dust size when far; sizeBoost scales with proximity.
         //  - Increase sizeBoost to make near-ground particles bigger.
         //  - life/maxLife control how long dust lingers.
-        // Colors from light to dark gray-brown
-        const palette = [
-          [230, 230, 230, 180],
-          [200, 200, 200, 170],
-          [160, 150, 150, 160],
-          [130, 120, 110, 150]
-        ];
+        // Colors fade from terrain hue toward brighter, lofted dust
+        const groundColor = [0x33, 0x2c, 0x4a];
+        const highlight = groundColor.map((c, idx) => {
+          const lift = [60, 52, 44][idx];
+          return Math.min(255, c + lift);
+        });
+        const warmHighlight = groundColor.map((c, idx) => {
+          const lift = [150, 140, 130][idx];
+          return Math.min(255, c + lift);
+        });
         for (let i = 0; i < count; i++) {
           const a = (Math.random() - 0.5) * Math.PI * 0.6; // lateral cone
           const sp = Math.random() * spread;
-          const baseR = 10 + Math.random() * 3;            // ADJUST base dust size
+          const baseR = 8 + Math.random() * 6;            // broader base dust size range
+          const sizeJitter = 0.6 + Math.random() * 1.4;   // vary dust scale per particle
           const sizeBoost = 4 * prox;                     // ADJUST proximity size gain
           const spawnX = Math.max(0, Math.min(terrain.width, x + (Math.random() - 0.5) * 12));
+          const liftMix = Math.min(0.40, 0.12 + prox * 0.26 + Math.random() * 0.16);
+          const shadowBias = -10 + Math.random() * 12; // skew darker but allow some lift
+          const brightMix = Math.random() < 0.45 ? (0.3 + Math.random() * 0.45) * (0.45 + prox * 0.55) : 0;
+          const tint = groundColor.map((c, idx) => {
+            const target = highlight[idx];
+            let value = c + (target - c) * liftMix + shadowBias;
+            if (brightMix > 0) {
+              const warm = warmHighlight[idx];
+              value += (warm - value) * brightMix;
+            }
+            value += (Math.random() - 0.5) * 6;
+            return Math.round(Math.max(0, Math.min(255, value)));
+          });
+          const alpha = Math.min(230, 140 + Math.random() * 60 + prox * 40);
           smoke.push({
             x: spawnX,
             y: y,
             vx: Math.cos(a) * sp * (Math.random()*0.6 + 0.7),
             vy: -Math.abs(Math.sin(a) * sp) * 0.3 - pushUp, // initial lift
-            r: baseR + sizeBoost,
+            r: (baseR + sizeBoost) * sizeJitter,
             life: 900 + Math.random() * 900,
             maxLife: 900 + Math.random() * 900,
-            color: palette[(Math.random() * palette.length) | 0],
+            color: [...tint, alpha],
             prox: prox
           });
         }
@@ -774,12 +792,13 @@ let camX = null; let camY = null;
       function drawSmoke() {
         if (smoke.length === 0) return;
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalCompositeOperation = 'source-over';
         for (const p of smoke) {
           if (p.life <= 0) continue;
           const aLife = Math.max(0, Math.min(1, p.life / p.maxLife));
           const aProx = 0.25 + 0.75 * (p.prox || 0);    // ADJUST proximity alpha gain
-          const alpha = (p.color[3]/255) * aProx * (0.25 + 0.75 * aLife);
+          const alphaRaw = (p.color[3]/255) * aProx * (0.25 + 0.75 * aLife);
+          const alpha = Math.min(0.95, alphaRaw);       // cap dust opacity at 95%
           ctx.fillStyle = `rgba(${p.color[0]},${p.color[1]},${p.color[2]},${alpha})`;
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r * (1.2 - 0.6*aLife), 0, Math.PI * 2);
