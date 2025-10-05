@@ -82,6 +82,17 @@
       let terrain = { samples: [], step: 4, width: width, levelName: levels[0].name };
       const pad = { x: 0, y: 0, w: 110, h: 10 };
       const PAD_PULSE_PERIOD = 3000; // ms for a full pad glow cycle
+      const BOMB_FUSE_MS = 3000;      // ms until detonation
+      const BOMB_ARM_DELAY = 220;     // ms before the bomb can detonate post-drop
+      const BOMB_BLINK_BASE = 0.002;  // radians/ms baseline blink speed
+      const BOMB_BLINK_ACCEL = 0.013; // blink speed gain as fuse approaches zero
+      const BOMB_MAX_RADIUS = 68;     // px crater influence radius
+      const BOMB_MAX_DEPTH = 36;      // px maximum depth carved into terrain
+      const BOMB_SELF_PUSH = 18;      // px upward nudge if lander inside blast
+      const BOMB_MAX_ACTIVE = 6;      // limit simultaneous live bombs to keep perf stable
+      const BOMB_DROP_COOLDOWN = 220; // ms cooldown between drops
+      const CRASH_CRATER_RADIUS = 78; // px terrain deformation from crashing
+      const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
 
       function generateTerrain(index = currentLevelIndex) {
         currentLevelIndex = index;
@@ -204,6 +215,8 @@ let padGlowAlpha = 0.525;
 let smoke = []; // engine dust/smoke particles near ground
 let blastSmoke = []; // post-explosion embers smoke
 let wreckFlames = []; // persistent burning wreckage
+let bombs = []; // active bombs dropped by the lander
+let bombCooldown = 0; // ms remaining until next bomb can be dropped
 
 let camX = null; let camY = null;
 
@@ -222,6 +235,40 @@ let camX = null; let camY = null;
           const y = lander.y + pt.lx * sin + pt.ly * cos;
           return { ...pt, x, y };
         });
+      }
+
+      function canDropBomb() {
+        if (gameOver || landed) return false;
+        if (bombCooldown > 0) return false;
+        if (bombs.length >= BOMB_MAX_ACTIVE) return false;
+        return true;
+      }
+
+      function dropBomb() {
+        if (!canDropBomb()) return;
+        bombCooldown = BOMB_DROP_COOLDOWN;
+        const cos = Math.cos(lander.angle);
+        const sin = Math.sin(lander.angle);
+        const baseOffset = lander.height / 2 + 6;
+        const dropX = lander.x + sin * baseOffset;
+        const dropY = lander.y + cos * baseOffset + 4;
+        const inheritVx = lander.vx;
+        const inheritVy = lander.vy;
+        const bomb = {
+          x: dropX,
+          y: dropY,
+          vx: inheritVx + sin * 0.006,
+          vy: inheritVy + Math.max(0.012, cos * 0.006) + 0.01,
+          fuseMs: BOMB_FUSE_MS,
+          armingMs: BOMB_ARM_DELAY,
+          blinkPhase: 0,
+          blinkRate: BOMB_BLINK_BASE,
+          lastFuseRatio: 1,
+          radius: 7,
+          grounded: false,
+          detonated: false,
+        };
+        bombs.push(bomb);
       }
 
       const audio = (() => {
@@ -490,14 +537,27 @@ let camX = null; let camY = null;
       // Store keys by their .key value and handle immediate restart on R
       window.addEventListener('keydown', (e) => {
         audio.unlock();
-        keys[e.key] = true;
-        if (e.key === 'r' || e.key === 'R') {
+        const key = e.key === 'Spacebar' ? ' ' : e.key;
+        if (key === ' ' || key === 'Space') {
           e.preventDefault();
-          resetGame();
+        }
+        keys[key] = true;
+        if (key === ' ' || key === 'Space') {
+          if (!e.repeat) {
+            keys.Space = true;
+            if (typeof canDropBomb === 'function' && canDropBomb()) {
+              dropBomb();
+            }
+          }
+          return;
+        }
+        if (key === 'r' || key === 'R') {
+          e.preventDefault();
+          resetGame(true);
         }
         // --- Tuning keys ---
         const step = (v, s, min, max) => Math.max(min, Math.min(max, v + s));
-        switch (e.key) {
+        switch (key) {
           case 'h': case 'H': showDebug = !showDebug; break;
           case 'q': tune.camLag = step(tune.camLag,  0.001, 0.0005, 0.02); break;
           case 'a': tune.camLag = step(tune.camLag, -0.001, 0.0005, 0.02); break;
@@ -526,14 +586,20 @@ let camX = null; let camY = null;
         }
       });
       window.addEventListener('keyup', (e) => {
-        keys[e.key] = false;
+        const key = e.key === 'Spacebar' ? ' ' : e.key;
+        if (key === ' ' || key === 'Space') {
+          e.preventDefault();
+          keys.Space = false;
+        }
+        keys[key] = false;
       });
       window.addEventListener('mousedown', () => audio.unlock());
       window.addEventListener('touchstart', () => audio.unlock(), { passive: true });
 
-      function resetGame() {
-        if (shouldRegen) { // generate next level after a successful landing
-          generateTerrain(nextLevelIndex);
+      function resetGame(forceTerrain = false) {
+        if (forceTerrain || shouldRegen) {
+          const regenIndex = shouldRegen ? nextLevelIndex : currentLevelIndex;
+          generateTerrain(regenIndex);
           shouldRegen = false;
         }
         const level = levels[currentLevelIndex];
@@ -555,6 +621,8 @@ let camX = null; let camY = null;
         smoke = [];
         blastSmoke = [];
         wreckFlames = [];
+        bombs = [];
+        bombCooldown = 0;
         audio.reset();
         // reset camera to new terrain context
         camX = lander.x;
@@ -571,6 +639,9 @@ let camX = null; let camY = null;
         audio.playDeathTone();
         debris = [];
 
+        deformTerrainAt(x, CRASH_CRATER_RADIUS, CRASH_CRATER_DEPTH);
+        const craterFloorY = terrainY(x);
+        const originY = craterFloorY - 4;
         const pushOut = (speedMin, speedRange) => speedMin + Math.random() * speedRange;
         const randomUpVector = (jitter = 0.25) => {
           const angle = (Math.random() - 0.5) * Math.PI; // -90°..+90° around upward axis
@@ -590,7 +661,7 @@ let camX = null; let camY = null;
           const speed = pushOut(0.32, 0.36);
           debris.push({
             x,
-            y,
+            y: originY,
             vx: baseVx * 0.25 + dir.dirX * speed,
             vy: baseVy * 0.18 + dir.dirY * speed,
             radius,
@@ -610,7 +681,7 @@ let camX = null; let camY = null;
           const life = 1200 + Math.random() * 880;
           debris.push({
             x,
-            y,
+            y: originY,
             vx: baseVx * 0.25 + dir.dirX * speed,
             vy: baseVy * 0.18 + dir.dirY * speed,
             radius,
@@ -630,7 +701,7 @@ let camX = null; let camY = null;
           const life = 900 + Math.random() * 660;
           debris.push({
             x,
-            y,
+            y: originY,
             vx: baseVx * 0.25 + dir.dirX * speed,
             vy: baseVy * 0.18 + dir.dirY * speed,
             radius,
@@ -938,6 +1009,233 @@ let camX = null; let camY = null;
         ctx.restore();
       }
 
+      function updateBombs(dt) {
+        if (bombCooldown > 0) {
+          bombCooldown -= dt;
+          if (bombCooldown < 0) bombCooldown = 0;
+        }
+        if (bombs.length === 0) return;
+        const airDrag = 0.9985;
+        const groundDrag = 0.94;
+        for (const bomb of bombs) {
+          if (bomb.detonated) continue;
+          bomb.armingMs = Math.max(0, bomb.armingMs - dt);
+          bomb.fuseMs -= dt;
+          const fuseRatio = Math.max(0, bomb.fuseMs / BOMB_FUSE_MS);
+          bomb.lastFuseRatio = fuseRatio;
+          bomb.blinkRate = BOMB_BLINK_BASE + BOMB_BLINK_ACCEL * (1 - fuseRatio);
+          bomb.blinkPhase += bomb.blinkRate * dt;
+          if (bomb.fuseMs <= 0) {
+            explodeBomb(bomb);
+            continue;
+          }
+          if (!bomb.grounded) {
+            bomb.vy += g * dt;
+            bomb.vx *= airDrag;
+            bomb.vy *= 0.999;
+          } else {
+            bomb.vx *= groundDrag;
+            if (Math.abs(bomb.vx) < 0.00001) bomb.vx = 0;
+          }
+          bomb.x += bomb.vx * dt;
+          bomb.y += bomb.vy * dt;
+          if (bomb.x < 0) {
+            bomb.x = 0;
+            bomb.vx = Math.abs(bomb.vx) * 0.35;
+          }
+          if (bomb.x > terrain.width) {
+            bomb.x = terrain.width;
+            bomb.vx = -Math.abs(bomb.vx) * 0.35;
+          }
+          const groundY = terrainY(bomb.x);
+          const radius = bomb.radius;
+          if (bomb.y + radius >= groundY) {
+            bomb.y = groundY - radius;
+            if (bomb.vy > 0) bomb.vy = 0;
+            bomb.grounded = true;
+          } else if (bomb.grounded && bomb.y + radius < groundY - 1) {
+            bomb.grounded = false;
+          }
+        }
+        bombs = bombs.filter(b => !b.detonated);
+      }
+
+      function drawBombs() {
+        if (bombs.length === 0) return;
+        ctx.save();
+        for (const bomb of bombs) {
+          if (bomb.detonated) continue;
+          const fuseRatio = clamp01(bomb.lastFuseRatio ?? 1);
+          const heat = 1 - fuseRatio;
+          const pulse = Math.sin(bomb.blinkPhase);
+          const coreRadius = bomb.radius;
+          const haloRadius = coreRadius * (1.6 + heat * 0.9 + Math.max(0, pulse) * 0.4);
+          const halo = ctx.createRadialGradient(bomb.x, bomb.y, 0, bomb.x, bomb.y, haloRadius);
+          const innerAlpha = Math.min(1, 0.35 + heat * 0.45 + Math.max(0, pulse) * 0.3);
+          const midAlpha = innerAlpha * 0.55;
+          halo.addColorStop(0, `rgba(255, ${Math.round(150 + heat * 100)}, ${Math.round(70 + heat * 70)}, ${innerAlpha})`);
+          halo.addColorStop(0.55, `rgba(255, ${Math.round(110 + heat * 70)}, ${Math.round(40 + heat * 60)}, ${midAlpha})`);
+          halo.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = halo;
+          ctx.beginPath();
+          ctx.arc(bomb.x, bomb.y, haloRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = pulse > 0 ? '#ffe27a' : '#ff744a';
+          ctx.beginPath();
+          ctx.arc(bomb.x, bomb.y, coreRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = '#311f33';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(bomb.x, bomb.y, coreRadius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function explodeBomb(bomb) {
+        if (!bomb || bomb.detonated) return;
+        bomb.detonated = true;
+        bomb.fuseMs = 0;
+        const x = bomb.x;
+        const y = bomb.y;
+        if (audio && typeof audio.playExplosion === 'function') {
+          audio.playExplosion();
+        }
+
+        const shardCount = 18 + (Math.random() * 10 | 0);
+        for (let i = 0; i < shardCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.14 + Math.random() * 0.22;
+          const radius = 6 + Math.random() * 6;
+          const life = 900 + Math.random() * 900;
+          debris.push({
+            x,
+            y,
+            vx: lander.vx * 0.15 + Math.cos(angle) * speed,
+            vy: lander.vy * 0.12 + Math.sin(angle) * speed - 0.02,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 0.85 + Math.random() * 0.4,
+            kind: 'shard',
+          });
+        }
+
+        const emberCount = 12 + (Math.random() * 8 | 0);
+        for (let i = 0; i < emberCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.10 + Math.random() * 0.18;
+          const radius = 4 + Math.random() * 4;
+          const life = 800 + Math.random() * 600;
+          debris.push({
+            x,
+            y,
+            vx: lander.vx * 0.1 + Math.cos(angle) * speed * 0.75,
+            vy: lander.vy * 0.1 + Math.sin(angle) * speed * 0.75 - 0.01,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 0.6 + Math.random() * 0.25,
+            kind: 'ember',
+          });
+        }
+
+        const smokeCount = 20 + (Math.random() * 12 | 0);
+        for (let i = 0; i < smokeCount; i++) {
+          const spread = (Math.random() - 0.5) * BOMB_MAX_RADIUS * 1.2;
+          const spawnX = Math.max(0, Math.min(terrain.width, x + spread));
+          const groundY = terrainY(spawnX);
+          const radius = 14 + Math.random() * 16;
+          const life = 1700 + Math.random() * 1400;
+          blastSmoke.push({
+            x: spawnX,
+            y: groundY - radius * (0.55 + Math.random() * 0.25),
+            vx: (Math.random() - 0.5) * 0.08,
+            vy: -0.02 - Math.random() * 0.02,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            heat: 0.75 + Math.random() * 0.35,
+            source: 'blast',
+          });
+        }
+
+        deformTerrainAt(x, BOMB_MAX_RADIUS, BOMB_MAX_DEPTH);
+      }
+
+      function deformTerrainAt(x, radius, depth) {
+        if (!terrain.samples || terrain.samples.length === 0) return;
+        if (radius <= 0 || depth <= 0) return;
+        const step = terrain.step;
+        const samples = terrain.samples;
+        const centerIdx = Math.round(x / step);
+        const radiusSamples = Math.ceil(radius / step);
+        const start = Math.max(0, centerIdx - radiusSamples - 2);
+        const end = Math.min(samples.length - 1, centerIdx + radiusSamples + 2);
+        const padStartIdx = Math.floor(pad.x / step);
+        const padEndIdx = Math.floor((pad.x + pad.w) / step);
+
+        for (let i = start; i <= end; i++) {
+          const sampleX = i * step;
+          const dx = sampleX - x;
+          const dist = Math.abs(dx);
+          if (dist > radius) continue;
+          if (i >= padStartIdx && i <= padEndIdx) continue;
+          const t = dist / radius;
+          const falloff = Math.max(0, 1 - t * t);
+          if (falloff <= 0) continue;
+          const delta = depth * falloff;
+          const newY = samples[i] + delta;
+          samples[i] = Math.min(height, newY);
+        }
+
+        const smoothIterations = 2;
+        for (let iter = 0; iter < smoothIterations; iter++) {
+          const snapshot = samples.slice();
+          for (let i = start; i <= end; i++) {
+            if (i <= 0 || i >= samples.length - 1) continue;
+            if (i >= padStartIdx && i <= padEndIdx) continue;
+            const neighborAvg = (snapshot[i - 1] + snapshot[i] + snapshot[i + 1]) / 3;
+            const blended = snapshot[i] * 0.6 + neighborAvg * 0.4;
+            samples[i] = Math.min(height, blended);
+          }
+        }
+
+        // Keep landing pad aligned to the current terrain profile beneath it
+        const padIdxStart = Math.max(0, Math.floor(pad.x / step));
+        const padIdxEnd = Math.min(samples.length - 1, Math.floor((pad.x + pad.w) / step));
+        let padSurface = samples[padIdxStart];
+        for (let i = padIdxStart + 1; i <= padIdxEnd; i++) {
+          if (samples[i] < padSurface) padSurface = samples[i];
+        }
+        pad.y = Math.max(0, Math.min(height - pad.h, padSurface - pad.h));
+
+        // Nudge lander upward if terrain carved out beneath it
+        const landerDist = Math.abs(lander.x - x);
+        if (landerDist <= radius + lander.width) {
+          const contactPoints = getLanderContactPoints();
+          let maxPenetration = 0;
+          for (const pt of contactPoints) {
+            const groundY = terrainY(pt.x);
+            const penetration = pt.y - groundY;
+            if (penetration > maxPenetration) {
+              maxPenetration = penetration;
+            }
+          }
+          if (maxPenetration > 0) {
+            const lift = Math.min(BOMB_SELF_PUSH, maxPenetration + 2);
+            lander.y -= lift;
+            if (lander.vy > 0) lander.vy = 0;
+          }
+        }
+      }
+
       // --- Engine dust/smoke when close to terrain ---
       function castThrustRay(originX, originY, dirX, dirY, maxDistance) {
         // Ray-march the exhaust downwards until it collides with terrain.
@@ -1174,6 +1472,8 @@ let camX = null; let camY = null;
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0); // identity transform
         ctx.globalAlpha = 1;
+        const activeBombs = bombs.filter(b => !b.detonated);
+        const nextFuseMs = activeBombs.length === 0 ? null : activeBombs.reduce((min, b) => Math.min(min, b.fuseMs), Infinity);
         const lines = [
           `level: ${terrain.levelName}  worldWidth: ${terrain.width.toFixed(0)}  padX: ${pad.x.toFixed(1)}`,
           `camLag: ${tune.camLag.toFixed(4)}  (Q/A)`,
@@ -1190,6 +1490,7 @@ let camX = null; let camY = null;
           `friction: ${tune.friction.toFixed(2)}  (M/,)`,
           `cam: (${camX.toFixed(1)}, ${camY.toFixed(1)})  lander: (${lander.x.toFixed(1)}, ${lander.y.toFixed(1)})`,
           `vel: (${lander.vx.toFixed(3)}, ${lander.vy.toFixed(3)})  ang: ${lander.angle.toFixed(2)}  angVel: ${lander.angularVelocity.toFixed(5)}`,
+          `bombs: ${activeBombs.length}  cooldown: ${bombCooldown.toFixed(0)}ms  next fuse: ${nextFuseMs === null ? '—' : (nextFuseMs / 1000).toFixed(2) + 's'}`,
           `Hold H to toggle this overlay. R to reset.`
         ];
         ctx.font = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
@@ -1217,6 +1518,7 @@ let camX = null; let camY = null;
         updateBlastSmoke(dt);
         updateWinFx(dt);
         updateSmoke(dt);
+        updateBombs(dt);
         if (padFlash > 0) padFlash -= dt;
         padPulsePhase = (padPulsePhase + (dt / PAD_PULSE_PERIOD) * Math.PI * 2) % (Math.PI * 2);
         padGlowAlpha = 0.525 + 0.325 * Math.sin(padPulsePhase);
@@ -1377,6 +1679,7 @@ let camX = null; let camY = null;
         ctx.save();
         ctx.translate(width / 2 - camX, height / 2 - camY);
         drawTerrain();
+        drawBombs();
         drawSmoke();
         drawBlastSmoke();
         drawWreckFlames();
