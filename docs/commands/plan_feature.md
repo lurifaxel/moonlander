@@ -16,4 +16,6 @@ If the user's requirements are unclear, especially after researching the relevan
 
 Prioritize being concise and precise. Make the plan as tight as possible without losing any of the critical details from the user's requirements.
 
+Always include a note to add the changes to CHANGELOG.md.
+
 Write the plan into an docs/features/<N>_PLAN.md file with the next available feature number (starting with 0001)
