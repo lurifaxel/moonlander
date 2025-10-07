@@ -199,6 +199,8 @@
       const EXPLOSION_KILL_RADIUS = 74; // px radius that destroys the lander from a blast
       const CRASH_CRATER_RADIUS = 78; // px terrain deformation from crashing
       const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
+      const DEBRIS_GRAVITY_MULT = 3;  // tweak to make explosion debris fall faster/slower
+      const DEBRIS_LIFE_MULT = 3;   // tweak to make explosion debris linger longer/shorter
 
       const editorState = {
         active: false,
@@ -1362,9 +1364,9 @@ let camY = null;
         audio.playDeathTone();
         debris = [];
 
+        const surfaceHit = findSurfaceBelow(x, Math.max(0, y - 10));
+        const craterFloorY = surfaceHit ? surfaceHit.y : y;
         deformTerrainAt(x, y, CRASH_CRATER_RADIUS, CRASH_CRATER_DEPTH);
-        const surfaceHit = findSurfaceBelow(x, Math.max(0, y - 10)) || { y: y };
-        const craterFloorY = surfaceHit.y;
         const originY = craterFloorY - 4;
         const pushOut = (speedMin, speedRange) => speedMin + Math.random() * speedRange;
         const randomUpVector = (jitter = 0.25) => {
@@ -1486,6 +1488,18 @@ let camY = null;
       function updateDebris(dt) {
         const BOUNCE = tune.bounce;
         const FRIC = tune.friction;
+        const bounceFactor = 0.35 + BOUNCE * 0.65;
+        // Sample a ring of offsets (in radii) so debris can bounce off overhangs and slopes.
+        const samples = [
+          { x: 0, y: 1 },
+          { x: 0, y: -1 },
+          { x: 1, y: 0 },
+          { x: -1, y: 0 },
+          { x: 0.72, y: 0.72 },
+          { x: -0.72, y: 0.72 },
+          { x: 0.72, y: -0.72 },
+          { x: -0.72, y: -0.72 },
+        ];
         for (const p of debris) {
           p.life -= dt;
           if (p.life <= 0) continue;
@@ -1497,21 +1511,64 @@ let camY = null;
 
           // physics
           const driftDamp = p.kind === 'ember' ? 0.993 : 0.997;
-          p.vy += g * dt;
+          p.vy += g * dt * DEBRIS_GRAVITY_MULT; // heavier debris arcs
           p.vx *= driftDamp;
           p.x += p.vx * dt;
           p.y += p.vy * dt;
 
-          // ground collision against terrain profile
-          const gy = groundYAt(p.x, p.y);
-          if (p.y + p.radius >= gy) {
-            p.y = gy - p.radius;
-            p.vy = -Math.abs(p.vy) * (0.35 + BOUNCE * 0.65);
-            p.vx *= FRIC;
+          let normalX = 0;
+          let normalY = 0;
+          let contactCount = 0;
+          for (const offset of samples) {
+            const sampleX = p.x + offset.x * p.radius;
+            const sampleY = p.y + offset.y * p.radius;
+            if (!isSolidWorld(sampleX, sampleY)) continue;
+            const info = resolvePenetrationAt(sampleX, sampleY);
+            if (!info || info.depth <= 0) continue;
+            p.x += info.normal.x * info.depth;
+            p.y += info.normal.y * info.depth;
+            normalX += info.normal.x;
+            normalY += info.normal.y;
+            contactCount++;
           }
-          // side walls (optional, keep pieces on screen)
+
+          const centerInfo = resolvePenetrationAt(p.x, p.y);
+          if (centerInfo && centerInfo.depth > 0) {
+            p.x += centerInfo.normal.x * centerInfo.depth;
+            p.y += centerInfo.normal.y * centerInfo.depth;
+            normalX += centerInfo.normal.x;
+            normalY += centerInfo.normal.y;
+            contactCount++;
+          }
+
+          if (contactCount > 0) {
+            const len = Math.hypot(normalX, normalY);
+            if (len > 0.0001) {
+              const nx = normalX / len;
+              const ny = normalY / len;
+              const vDot = p.vx * nx + p.vy * ny;
+              if (vDot < 0) {
+                const reflected = -vDot * bounceFactor;
+                const impulse = reflected - vDot;
+                p.vx += nx * impulse;
+                p.vy += ny * impulse;
+              }
+              const tx = ny;
+              const ty = -nx;
+              const vt = p.vx * tx + p.vy * ty;
+              const vtTarget = vt * FRIC;
+              const tangentImpulse = vtTarget - vt;
+              p.vx += tx * tangentImpulse;
+              p.vy += ty * tangentImpulse;
+            }
+          }
+
           if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx) * BOUNCE; }
           if (p.x > terrain.width) { p.x = terrain.width; p.vx = -Math.abs(p.vx) * BOUNCE; }
+          if (p.y > terrain.height) {
+            p.y = terrain.height;
+            if (p.vy > 0) p.vy = -p.vy * bounceFactor;
+          }
         }
         // trim dead
         debris = debris.filter(p => p.life > 0.0 && p.radius > 0.4);
@@ -1918,9 +1975,10 @@ let camY = null;
           });
         }
 
+        const blastSurface = findSurfaceBelow(x, Math.max(0, y - BOMB_MAX_RADIUS));
+        const blastChainY = blastSurface ? blastSurface.y : y;
         deformTerrainAt(x, y, BOMB_MAX_RADIUS, BOMB_MAX_DEPTH);
-        const blastY = groundYAt(x, y);
-        applyExplosionEffects(x, blastY, bomb);
+        applyExplosionEffects(x, blastChainY, bomb);
       }
 
       function deformTerrainAt(x, y, radius, depth) {
