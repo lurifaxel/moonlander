@@ -35,18 +35,97 @@
       font-size: 14px;
       pointer-events: none;
     }
+    .hidden {
+      display: none !important;
+    }
+    #startMenu {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      background: rgba(16, 20, 32, 0.92);
+      z-index: 10;
+      text-align: center;
+    }
+    #startMenu h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 1px;
+    }
+    #startMenu button {
+      min-width: 180px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      background: #2ecc71;
+      color: #0b101d;
+      transition: transform 0.1s ease, background 0.1s ease;
+    }
+    #startMenu button:hover {
+      transform: translateY(-1px);
+      background: #27ae60;
+    }
+    #startMenu button.secondary {
+      background: #3498db;
+      color: #f5f9ff;
+    }
+    #startMenu button.secondary:hover {
+      background: #2b7cb3;
+    }
+    #editorPanel {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      max-width: 280px;
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.65);
+      color: #f0f6ff;
+      font-size: 13px;
+      line-height: 1.5;
+      z-index: 6;
+      pointer-events: none;
+      text-align: left;
+    }
+    #editorPanel strong {
+      color: #8fdfff;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas" width="600" height="400"></canvas>
   <div id="info"></div>
+  <div id="startMenu">
+    <h1>Moon Lander</h1>
+    <button id="menuPlay">Play</button>
+    <button id="menuEditor" class="secondary">Create Level</button>
+  </div>
+  <div id="editorPanel" class="hidden"></div>
   <script>
     (() => {
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d');
       const info = document.getElementById('info');
+      const startMenu = document.getElementById('startMenu');
+      const menuPlayBtn = document.getElementById('menuPlay');
+      const menuEditorBtn = document.getElementById('menuEditor');
+      const editorPanel = document.getElementById('editorPanel');
       let width = canvas.width;
       let height = canvas.height;
+
+      const APP_MODE = {
+        MENU: 'menu',
+        PLAY: 'play',
+        EDITOR: 'editor',
+        TEST: 'test',
+      };
+      let appMode = APP_MODE.MENU;
 
       const TARGET_ASPECT = 16 / 9;
       const MAX_VIEW_WIDTH = 1280;
@@ -94,7 +173,17 @@
       let currentLevelIndex = 0;
       let nextLevelIndex = 0;
 
-      let terrain = { samples: [], step: 4, width: width, levelName: levels[0].name };
+      const GRID_CELL_SIZE = 8;
+      let terrain = {
+        cellSize: GRID_CELL_SIZE,
+        cols: 0,
+        rows: 0,
+        solids: new Uint8Array(0),
+        width: width,
+        height: height,
+        levelName: levels[0].name,
+        dirtyRender: true,
+      };
       const pad = { x: 0, y: 0, w: 110, h: 10 };
       const PAD_PULSE_PERIOD = 3000; // ms for a full pad glow cycle
       const BOMB_FUSE_MS = 3000;      // ms until detonation
@@ -111,16 +200,72 @@
       const CRASH_CRATER_RADIUS = 78; // px terrain deformation from crashing
       const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
 
+      const editorState = {
+        active: false,
+        grid: null,
+        placementOptions: ['spawn', 'landing'],
+        placementIndex: 0,
+        spawn: { x: 180, y: 120 },
+        isPainting: false,
+        hasMoved: false,
+        cursorWorld: null,
+        lastPointer: null,
+        pendingPaintStart: null,
+        brushRadius: 26,
+        activeBrushMode: 'add',
+        camX: null,
+        camY: null,
+        testBaseline: null,
+      };
+
+      function cloneSolidsArray(source) {
+        const copy = new Uint8Array(source.length);
+        copy.set(source);
+        return copy;
+      }
+
+      function restoreTerrainFromBaseline() {
+        if (!editorState.testBaseline) return;
+        const baseline = editorState.testBaseline;
+        if (terrain.solids.length !== baseline.length) {
+          terrain.solids = new Uint8Array(baseline.length);
+        }
+        terrain.solids.set(baseline);
+        terrain.dirtyRender = true;
+        if (editorState.grid) {
+          editorState.grid.solids = terrain.solids;
+        }
+      }
+
+      function initTerrainGrid(worldWidthPx) {
+        const cellSize = terrain.cellSize;
+        const cols = Math.max(1, Math.ceil(worldWidthPx / cellSize));
+        const rows = Math.max(1, Math.ceil(height / cellSize));
+        terrain.cols = cols;
+        terrain.rows = rows;
+        terrain.width = cols * cellSize;
+        terrain.height = rows * cellSize;
+        terrain.solids = new Uint8Array(cols * rows);
+        terrain.dirtyRender = true;
+      }
+
+      function fillColumnSolid(col, fromRow) {
+        if (col < 0 || col >= terrain.cols) return;
+        for (let row = fromRow; row < terrain.rows; row++) {
+          terrain.solids[row * terrain.cols + col] = 1;
+        }
+      }
+
       function generateTerrain(index = currentLevelIndex) {
         currentLevelIndex = index;
         nextLevelIndex = currentLevelIndex;
         const level = levels[currentLevelIndex];
         terrain.levelName = level.name;
-        const step = 4; // px between samples for the height profile
-        terrain.step = step;
-        terrain.width = level.worldWidth;
-        const cols = Math.ceil(level.worldWidth / step) + 1;
-        const h = new Array(cols);
+        initTerrainGrid(level.worldWidth);
+
+        const step = terrain.cellSize;
+        const cols = terrain.cols;
+        const heights = new Array(cols).fill(height);
 
         const baseMin = height * level.baseBand[0];
         const baseMax = height * level.baseBand[1];
@@ -136,35 +281,308 @@
           const noise = (Math.random() - 0.5) * amp * level.noiseScale;
           y = y * 0.55 + (target + noise) * 0.45;
           y = Math.max(baseMin, Math.min(baseMax, y));
-          h[i] = y | 0;
+          heights[i] = y | 0;
         }
 
         // create a flat segment for landing pad away from the start
         const padW = 110; // keep in sync with pad.w
-        const padStepCount = Math.max(4, Math.round(padW / step));
+        const padCols = Math.max(4, Math.round(padW / step));
         const padStartPx = Math.floor(level.worldWidth * level.padOffset - padW / 2);
-        const padStartIdx = Math.max(0, Math.min(cols - padStepCount - 1, Math.floor(padStartPx / step)));
-        let padY = h[padStartIdx];
-        for (let i = 1; i < padStepCount; i++) padY = Math.min(padY, h[padStartIdx + i]);
-        for (let i = 0; i < padStepCount; i++) h[padStartIdx + i] = padY;
+        const padStartIdx = Math.max(0, Math.min(cols - padCols - 1, Math.floor(padStartPx / step)));
+        let padY = heights[padStartIdx];
+        for (let i = 1; i < padCols; i++) padY = Math.min(padY, heights[padStartIdx + i]);
+        for (let i = 0; i < padCols; i++) heights[padStartIdx + i] = padY;
 
-        terrain.samples = h;
+        for (let col = 0; col < cols; col++) {
+          const fillStart = Math.floor(heights[col] / step);
+          fillColumnSolid(col, fillStart);
+        }
 
-        // update pad position to sit on top of the flat segment
         pad.w = padW;
         pad.x = padStartIdx * step;
-        pad.y = padY - pad.h; // top of terrain minus pad height
+        pad.y = padY - pad.h;
+        alignPadToSurface(pad.x + pad.w / 2, pad.y);
+        terrain.dirtyRender = true;
       }
 
-      function terrainY(x) {
-        // linear interpolation between nearest samples
-        const step = terrain.step;
-        const clampedX = Math.max(0, Math.min(terrain.width, x));
-        const idx = Math.floor(clampedX / step);
-        const a = Math.max(0, Math.min(terrain.samples.length - 1, idx));
-        const b = Math.max(0, Math.min(terrain.samples.length - 1, idx + 1));
-        const t = (clampedX - a * step) / step;
-        return (terrain.samples[a] * (1 - t) + terrain.samples[b] * t);
+      function cellIndex(col, row) {
+        return row * terrain.cols + col;
+      }
+
+      function isSolidCell(col, row) {
+        if (col < 0 || col >= terrain.cols) return false;
+        if (row < 0 || row >= terrain.rows) return true;
+        return terrain.solids[cellIndex(col, row)] === 1;
+      }
+
+      function setSolidCell(col, row, value) {
+        if (col < 0 || col >= terrain.cols) return;
+        if (row < 0 || row >= terrain.rows) return;
+        terrain.solids[cellIndex(col, row)] = value ? 1 : 0;
+        terrain.dirtyRender = true;
+      }
+
+      function isSolidWorld(x, y) {
+        const clampedX = clamp(x, 0, terrain.width - 1);
+        const clampedY = clamp(y, 0, terrain.height - 1);
+        const col = Math.floor(clampedX / terrain.cellSize);
+        const row = Math.floor(clampedY / terrain.cellSize);
+        return isSolidCell(col, row);
+      }
+
+      function findSurfaceAlongRay(x, y, dirX, dirY, maxDistance = 1600) {
+        const step = terrain.cellSize * 0.5;
+        const steps = Math.ceil(maxDistance / step);
+        let px = x;
+        let py = y;
+        for (let i = 0; i < steps; i++) {
+          px += dirX * step;
+          py += dirY * step;
+          if (px < 0 || px >= terrain.width || py < 0 || py >= terrain.height) break;
+          if (isSolidWorld(px, py)) {
+            return { x: px, y: py };
+          }
+        }
+        return null;
+      }
+
+      function findSurfaceBelow(x, startY) {
+        const hit = findSurfaceAlongRay(x, startY, 0, 1, terrain.height - startY + 16);
+        if (!hit) return null;
+        const row = Math.floor(hit.y / terrain.cellSize);
+        return { x, y: row * terrain.cellSize };
+      }
+
+      function findSurfaceAbove(x, startY) {
+        const hit = findSurfaceAlongRay(x, startY, 0, -1, startY + 16);
+        if (!hit) return null;
+        const row = Math.floor(hit.y / terrain.cellSize);
+        return { x, y: (row + 1) * terrain.cellSize };
+      }
+
+      function alignPadToSurface(centerX, hintY) {
+        const searchStart = clamp(hintY ?? 0, 0, terrain.height - 1);
+        const surface = findSurfaceBelow(centerX, searchStart);
+        if (!surface) return;
+        pad.y = clamp(surface.y - pad.h, 0, terrain.height - pad.h);
+      }
+
+      function groundYAt(x, hintY = 0) {
+        const surface = findSurfaceBelow(x, hintY);
+        return surface ? surface.y : terrain.height;
+      }
+
+      function resolvePenetrationAt(x, y) {
+        const outsideSurface = findSurfaceBelow(x, y + terrain.cellSize * 0.6);
+        if (!isSolidWorld(x, y)) {
+          return {
+            depth: 0,
+            normal: { x: 0, y: -1 },
+            surfaceY: outsideSurface ? outsideSurface.y : null,
+          };
+        }
+        const directions = [
+          { x: 0, y: -1 },
+          { x: 0, y: 1 },
+          { x: -1, y: 0 },
+          { x: 1, y: 0 },
+          { x: -1, y: -1 },
+          { x: 1, y: -1 },
+          { x: -1, y: 1 },
+          { x: 1, y: 1 },
+        ];
+        const step = Math.max(terrain.cellSize * 0.3, 2);
+        const maxSteps = 80;
+        let best = null;
+        for (const dir of directions) {
+          let px = x;
+          let py = y;
+          let dist = 0;
+          for (let i = 0; i < maxSteps; i++) {
+            px += dir.x * step;
+            py += dir.y * step;
+            dist += step;
+            if (px < 0 || px >= terrain.width || py < 0 || py >= terrain.height) {
+              break;
+            }
+            if (!isSolidWorld(px, py)) {
+              if (!best || dist < best.dist) {
+                best = {
+                  dist,
+                  dir,
+                  exitX: px - dir.x * step * 0.5,
+                  exitY: py - dir.y * step * 0.5,
+                };
+              }
+              break;
+            }
+          }
+        }
+        if (!best) {
+          return {
+            depth: 0,
+            normal: { x: 0, y: -1 },
+            surfaceY: outsideSurface ? outsideSurface.y : null,
+          };
+        }
+        const len = Math.hypot(best.dir.x, best.dir.y) || 1;
+        const normal = { x: best.dir.x / len, y: best.dir.y / len };
+        const surfaceY = best.exitY != null
+          ? clamp(best.exitY, 0, terrain.height)
+          : (outsideSurface ? outsideSurface.y : null);
+        const depth = Math.min(best.dist, terrain.cellSize * 12);
+        return {
+          depth,
+          normal,
+          surfaceY,
+        };
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function screenToWorld(x, y) {
+        const camXSafe = camX == null ? 0 : camX;
+        const camYSafe = camY == null ? 0 : camY;
+        const worldX = x + camXSafe - width / 2;
+        const worldY = y + camYSafe - height / 2;
+        return { x: worldX, y: worldY };
+      }
+
+      function initEditorTerrain(resetTerrain = false) {
+        const worldWidth = Math.max(width, 1200);
+        terrain.levelName = 'Custom Level';
+        if (resetTerrain || !editorState.grid || editorState.grid.cols === 0) {
+          initTerrainGrid(worldWidth);
+          terrain.solids.fill(0);
+          const fillRow = Math.floor((height * 0.78) / terrain.cellSize);
+          for (let col = 0; col < terrain.cols; col++) {
+            fillColumnSolid(col, fillRow);
+          }
+          editorState.grid = {
+            cellSize: terrain.cellSize,
+            cols: terrain.cols,
+            rows: terrain.rows,
+            solids: terrain.solids,
+          };
+          editorState.spawn.x = Math.min(worldWidth * 0.18, worldWidth - 200);
+          const spawnSurface = findSurfaceBelow(editorState.spawn.x, height * 0.6);
+          editorState.spawn.y = (spawnSurface ? spawnSurface.y : height * 0.75) - 140;
+          pad.w = 110;
+          pad.x = clamp(worldWidth * 0.65 - pad.w / 2, 0, Math.max(0, worldWidth - pad.w));
+          alignPadToSurface(pad.x + pad.w / 2, height * 0.4);
+          editorState.camX = worldWidth / 2;
+          editorState.camY = height * 0.6;
+          editorState.placementIndex = 0;
+        } else {
+          initTerrainGrid(editorState.grid.cols * editorState.grid.cellSize);
+          terrain.solids.set(editorState.grid.solids);
+          editorState.grid.solids = terrain.solids;
+        }
+        editorState.active = true;
+        editorState.brushRadius = editorState.brushRadius || 26;
+        if (editorState.camX == null) editorState.camX = terrain.width / 2;
+        if (editorState.camY == null) editorState.camY = height * 0.6;
+        editorState.camX = clamp(editorState.camX, width / 2, Math.max(width / 2, terrain.width - width / 2));
+        editorState.camY = clamp(editorState.camY, height * 0.3, height * 0.9);
+        camX = editorState.camX;
+        camY = editorState.camY;
+        alignEditorSpawn();
+        alignEditorPad();
+        editorState.grid = {
+          cellSize: terrain.cellSize,
+          cols: terrain.cols,
+          rows: terrain.rows,
+          solids: terrain.solids,
+        };
+        editorState.testBaseline = null;
+      }
+
+      function alignEditorSpawn() {
+        editorState.spawn.x = clamp(editorState.spawn.x, 0, terrain.width);
+        const below = findSurfaceBelow(editorState.spawn.x, editorState.spawn.y + 2) || findSurfaceBelow(editorState.spawn.x, 0) || { y: terrain.height };
+        const above = findSurfaceAbove(editorState.spawn.x, editorState.spawn.y - 2);
+        const ceiling = above ? above.y + 40 : height * 0.12;
+        const floor = below ? below.y - 30 : terrain.height - 30;
+        editorState.spawn.y = clamp(editorState.spawn.y, ceiling, floor);
+      }
+
+      function alignEditorPad() {
+        pad.x = clamp(pad.x, 0, Math.max(0, terrain.width - pad.w));
+        alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
+      }
+
+      function editorPlaceSpawn(x, y) {
+        const safeX = clamp(x, 0, terrain.width);
+        const below = findSurfaceBelow(safeX, y) || findSurfaceBelow(safeX, 0) || { y: terrain.height };
+        const above = findSurfaceAbove(safeX, y);
+        const ceiling = above ? above.y + 35 : height * 0.12;
+        const floor = below ? below.y - 30 : terrain.height - 30;
+        editorState.spawn.x = safeX;
+        editorState.spawn.y = clamp(y, ceiling, floor);
+      }
+
+      function editorPlaceLanding(x, y) {
+        const half = pad.w / 2;
+        const start = clamp(x - half, 0, Math.max(0, terrain.width - pad.w));
+        pad.x = start;
+        const surface = findSurfaceBelow(x, y);
+        if (surface) {
+          pad.y = clamp(surface.y - pad.h, 0, terrain.height - pad.h);
+        } else {
+          alignPadToSurface(x, y);
+        }
+      }
+
+      function editorApplyBrush(x, y, mode) {
+        const radius = editorState.brushRadius;
+        const cellSize = terrain.cellSize;
+        const colCenter = Math.floor(clamp(x, 0, terrain.width - 1) / cellSize);
+        const rowCenter = Math.floor(clamp(y, 0, terrain.height - 1) / cellSize);
+        const radiusCells = Math.ceil(radius / cellSize);
+        const radiusSq = radius * radius;
+        for (let dy = -radiusCells; dy <= radiusCells; dy++) {
+          for (let dx = -radiusCells; dx <= radiusCells; dx++) {
+            const col = colCenter + dx;
+            const row = rowCenter + dy;
+            const cx = (col + 0.5) * cellSize;
+            const cy = (row + 0.5) * cellSize;
+            const distSq = (cx - x) * (cx - x) + (cy - y) * (cy - y);
+            if (distSq <= radiusSq) {
+              setSolidCell(col, row, mode === 'add');
+            }
+          }
+        }
+        alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
+        alignEditorSpawn();
+      }
+
+      function editorStroke(from, to, mode) {
+        const distance = Math.hypot(to.x - from.x, to.y - from.y);
+        const steps = Math.max(1, Math.floor(distance / (terrain.cellSize * 0.5)));
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const px = from.x + (to.x - from.x) * t;
+          const py = from.y + (to.y - from.y) * t;
+          editorApplyBrush(px, py, mode);
+        }
+      }
+
+      function updateEditorPanel(statusLines) {
+        if (statusLines && statusLines.length) {
+          editorPanel.innerHTML = statusLines.map(line => `<div>${line}</div>`).join('');
+        } else {
+          editorPanel.innerHTML = '';
+        }
+      }
+
+      function labelForPlacement(key) {
+        switch (key) {
+          case 'spawn': return 'Spawn point';
+          case 'landing': return 'Landing zone';
+          default: return key;
+        }
       }
       // --- End terrain helpers ---
 
@@ -274,6 +692,8 @@ let camY = null;
 
         camX = null;
         camY = null;
+        editorState.camX = null;
+        editorState.camY = null;
       }
 
       function getLanderContactPoints() {
@@ -586,7 +1006,121 @@ let camY = null;
         bounce: 0.35,
         friction: 0.78,
       };
-      
+
+      function updateEditorOverlay() {
+        if (appMode === APP_MODE.EDITOR) {
+          editorPanel.classList.remove('hidden');
+          const option = editorState.placementOptions[editorState.placementIndex];
+          updateEditorPanel([
+            '<strong>Level Editor</strong>',
+            'Left drag: add terrain (hold Alt to carve)',
+            `Mouse wheel: select ${labelForPlacement(option)}`,
+            `Click: place ${labelForPlacement(option)}`,
+            'R: test this level',
+            'Esc: back to menu',
+          ]);
+        } else if (appMode === APP_MODE.TEST) {
+          editorPanel.classList.remove('hidden');
+          updateEditorPanel([
+            '<strong>Test Flight</strong>',
+            'Arrow keys: fly the lander',
+            'R: restart test',
+            'Esc: return to editor',
+          ]);
+        } else {
+          editorPanel.classList.add('hidden');
+          updateEditorPanel([]);
+        }
+      }
+
+      function enterMenu() {
+        appMode = APP_MODE.MENU;
+        editorState.active = false;
+        startMenu.classList.remove('hidden');
+        updateEditorOverlay();
+        info.textContent = '';
+        audio.setThrusterActive(false);
+        keys.Space = false;
+        for (const key of Object.keys(keys)) {
+          if (keys[key]) keys[key] = false;
+        }
+      }
+
+      function enterPlay() {
+        appMode = APP_MODE.PLAY;
+        startMenu.classList.add('hidden');
+        editorState.active = false;
+        generateTerrain(0);
+        resetGame(true);
+        updateEditorOverlay();
+      }
+
+      function enterEditor(resetTerrain = false) {
+        appMode = APP_MODE.EDITOR;
+        startMenu.classList.add('hidden');
+        initEditorTerrain(resetTerrain);
+        resetGame(false, {
+          spawn: { ...editorState.spawn },
+          customTerrain: true,
+          camera: { x: editorState.spawn.x, y: editorState.spawn.y },
+        });
+        shouldRegen = false;
+        exploded = true; // hide lander during editing
+        camX = editorState.camX;
+        camY = editorState.camY;
+        editorState.cursorWorld = null;
+        editorState.isPainting = false;
+        editorState.hasMoved = false;
+        editorState.lastPointer = null;
+        editorState.pendingPaintStart = null;
+        editorState.activeBrushMode = 'add';
+        updateEditorOverlay();
+      }
+
+      function enterEditorTest() {
+        const startingFromEditor = appMode === APP_MODE.EDITOR;
+        if (!startingFromEditor) {
+          restoreTerrainFromBaseline();
+        }
+        if (startingFromEditor) {
+          editorState.camX = camX;
+          editorState.camY = camY;
+          editorState.testBaseline = cloneSolidsArray(terrain.solids);
+        } else if (editorState.testBaseline) {
+          terrain.solids.set(editorState.testBaseline);
+        }
+        appMode = APP_MODE.TEST;
+        startMenu.classList.add('hidden');
+        exploded = false;
+        resetGame(false, {
+          spawn: { ...editorState.spawn },
+          customTerrain: true,
+          camera: { x: editorState.spawn.x, y: editorState.spawn.y },
+        });
+        shouldRegen = false;
+        editorState.pendingPaintStart = null;
+        updateEditorOverlay();
+      }
+
+      function returnToEditorFromTest() {
+        if (editorState.testBaseline) {
+          editorState.grid = editorState.grid || {};
+          editorState.grid.solids = cloneSolidsArray(editorState.testBaseline);
+        }
+        enterEditor(false);
+        editorState.testBaseline = null;
+      }
+
+      menuPlayBtn.addEventListener('click', () => {
+        audio.unlock();
+        enterPlay();
+      });
+
+      menuEditorBtn.addEventListener('click', () => {
+        audio.unlock();
+        enterEditor(true);
+      });
+
       // Debug overlay is off by default
       let showDebug = false;
 
@@ -597,8 +1131,26 @@ let camY = null;
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
         }
+        if (key === 'Escape') {
+          if (appMode === APP_MODE.TEST) {
+            e.preventDefault();
+            returnToEditorFromTest();
+            return;
+          }
+          if (appMode === APP_MODE.EDITOR) {
+            e.preventDefault();
+            enterMenu();
+            return;
+          }
+          if (appMode === APP_MODE.PLAY) {
+            e.preventDefault();
+            enterMenu();
+            return;
+          }
+        }
         keys[key] = true;
-        if (key === ' ' || key === 'Space') {
+        const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        if ((key === ' ' || key === 'Space') && gameplayMode) {
           if (!e.repeat) {
             keys.Space = true;
             if (typeof canDropBomb === 'function' && canDropBomb()) {
@@ -609,10 +1161,18 @@ let camY = null;
         }
         if (key === 'r' || key === 'R') {
           e.preventDefault();
-          resetGame(true);
+          if (appMode === APP_MODE.PLAY) {
+            resetGame(true);
+          } else if (appMode === APP_MODE.EDITOR) {
+            enterEditorTest();
+          } else if (appMode === APP_MODE.TEST) {
+            enterEditorTest();
+          }
+          return;
         }
         // --- Tuning keys ---
         const step = (v, s, min, max) => Math.max(min, Math.min(max, v + s));
+        if (!gameplayMode) return;
         switch (key) {
           case 'h': case 'H': showDebug = !showDebug; break;
           case 'q': tune.camLag = step(tune.camLag,  0.001, 0.0005, 0.02); break;
@@ -652,16 +1212,114 @@ let camY = null;
       window.addEventListener('mousedown', () => audio.unlock());
       window.addEventListener('touchstart', () => audio.unlock(), { passive: true });
 
-      function resetGame(forceTerrain = false) {
-        if (forceTerrain || shouldRegen) {
+      window.addEventListener('wheel', (e) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (!editorState.placementOptions.length) return;
+        e.preventDefault();
+        const direction = e.deltaY > 0 ? 1 : -1;
+        const count = editorState.placementOptions.length;
+        editorState.placementIndex = (editorState.placementIndex + direction + count) % count;
+        updateEditorOverlay();
+      }, { passive: false });
+
+      canvas.addEventListener('mousedown', (e) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (e.button !== 0) return;
+        const world = screenToWorld(e.offsetX, e.offsetY);
+        editorState.isPainting = true;
+        editorState.hasMoved = false;
+        editorState.lastPointer = { ...world };
+        editorState.cursorWorld = { ...world };
+        editorState.pendingPaintStart = { ...world };
+        editorState.activeBrushMode = e.altKey ? 'carve' : 'add';
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        const world = screenToWorld(e.offsetX, e.offsetY);
+        editorState.cursorWorld = { ...world };
+        if (!editorState.isPainting) return;
+        const prev = editorState.lastPointer;
+        if (!editorState.hasMoved) {
+          const reference = editorState.pendingPaintStart || prev;
+          if (reference) {
+            const dx = world.x - reference.x;
+            const dy = world.y - reference.y;
+            if (Math.hypot(dx, dy) > 4) {
+              editorState.hasMoved = true;
+              const seed = editorState.pendingPaintStart || reference;
+              editorApplyBrush(seed.x, seed.y, editorState.activeBrushMode);
+              editorState.pendingPaintStart = null;
+            }
+          }
+        }
+        if (editorState.hasMoved && prev) {
+          editorStroke(prev, world, editorState.activeBrushMode);
+        }
+        editorState.lastPointer = { ...world };
+      });
+
+      function endEditorStroke(world) {
+        if (!editorState.isPainting) return;
+        editorState.isPainting = false;
+        const moved = editorState.hasMoved;
+        editorState.hasMoved = false;
+        editorState.pendingPaintStart = null;
+        editorState.lastPointer = null;
+        if (!moved) {
+          const option = editorState.placementOptions[editorState.placementIndex];
+          if (option === 'spawn') {
+            editorPlaceSpawn(world.x, world.y);
+          } else if (option === 'landing') {
+            editorPlaceLanding(world.x, world.y);
+          }
+        }
+      }
+
+      canvas.addEventListener('mouseup', (e) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (e.button !== 0) return;
+        const world = screenToWorld(e.offsetX, e.offsetY);
+        endEditorStroke(world);
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        editorState.cursorWorld = null;
+        if (!editorState.isPainting) return;
+        editorState.isPainting = false;
+        editorState.lastPointer = null;
+        editorState.hasMoved = false;
+        editorState.pendingPaintStart = null;
+      });
+
+      function resetGame(forceTerrain = false, overrides = {}) {
+        const {
+          spawn = null,
+          customTerrain = false,
+          camera = null,
+        } = overrides;
+        const usingCustomTerrain = !!customTerrain;
+        if ((forceTerrain || shouldRegen) && !usingCustomTerrain) {
           const regenIndex = shouldRegen ? nextLevelIndex : currentLevelIndex;
           generateTerrain(regenIndex);
           shouldRegen = false;
         }
-        const level = levels[currentLevelIndex];
-        const startBuffer = 140;
-        lander.x = Math.min(level.worldWidth * 0.08, level.worldWidth - startBuffer);
-        lander.y = 50;
+        if (!usingCustomTerrain) {
+          const level = levels[currentLevelIndex];
+          const startBuffer = 140;
+          lander.x = Math.min(level.worldWidth * 0.08, level.worldWidth - startBuffer);
+          lander.y = 50;
+        } else if (spawn) {
+          lander.x = spawn.x;
+          lander.y = spawn.y;
+        } else {
+          const fallbackX = clamp(terrain.width * 0.1, 0, Math.max(0, terrain.width));
+          lander.x = fallbackX;
+          const below = findSurfaceBelow(fallbackX, 0);
+          const fallbackGround = below ? below.y : terrain.height;
+          lander.y = Math.max(40, fallbackGround - 160);
+        }
         lander.vx = 0;
         lander.vy = 0;
         lander.angle = 0;
@@ -680,23 +1338,33 @@ let camY = null;
         bombs = [];
         bombCooldown = 0;
         audio.reset();
-        // reset camera to new terrain context
-        camX = lander.x;
-        camY = lander.y;
+        const camSourceX = camera && camera.x != null ? camera.x : lander.x;
+        const camSourceY = camera && camera.y != null ? camera.y : lander.y;
+        camX = camSourceX;
+        camY = camSourceY;
+        keys.Space = false;
+        for (const key of Object.keys(keys)) {
+          if (keys[key]) keys[key] = false;
+        }
       }
 
       function spawnExplosion(x, y, baseVx, baseVy) {
         if (exploded) return;
         exploded = true;
         gameOver = true;
-        message = 'You Crashed! Press R to restart';
+        if (appMode === APP_MODE.TEST) {
+          message = 'Test failed. Press R to retry or Esc to edit';
+        } else {
+          message = 'You Crashed! Press R to restart';
+        }
         audio.stopThrusterImmediate();
         audio.playExplosion();
         audio.playDeathTone();
         debris = [];
 
-        deformTerrainAt(x, CRASH_CRATER_RADIUS, CRASH_CRATER_DEPTH);
-        const craterFloorY = terrainY(x);
+        deformTerrainAt(x, y, CRASH_CRATER_RADIUS, CRASH_CRATER_DEPTH);
+        const surfaceHit = findSurfaceBelow(x, Math.max(0, y - 10)) || { y: y };
+        const craterFloorY = surfaceHit.y;
         const originY = craterFloorY - 4;
         const pushOut = (speedMin, speedRange) => speedMin + Math.random() * speedRange;
         const randomUpVector = (jitter = 0.25) => {
@@ -772,8 +1440,8 @@ let camY = null;
         const smokeCount = 34 + Math.floor(Math.random() * 22);
         for (let i = 0; i < smokeCount; i++) {
           const spread = (Math.random() - 0.5) * 120;
-          const spawnX = Math.max(0, Math.min(terrain.width, x + spread));
-          const groundY = terrainY(spawnX);
+          const spawnX = clamp(x + spread, 0, terrain.width);
+          const groundY = groundYAt(spawnX, y);
           const radius = 18 + Math.random() * 18;
           const life = 2200 + Math.random() * 1800;
           const rise = 0.012 + Math.random() * 0.018;
@@ -795,8 +1463,8 @@ let camY = null;
         const wreckCount = 3 + (Math.random() * 3 | 0);
         for (let i = 0; i < wreckCount; i++) {
           const spread = (Math.random() - 0.5) * 50;
-          const px = Math.max(0, Math.min(terrain.width, x + spread));
-          const gy = terrainY(px);
+          const px = clamp(x + spread, 0, terrain.width);
+          const gy = groundYAt(px, y);
           const baseRadius = 14 + Math.random() * 12;
           wreckFlames.push({
             x: px,
@@ -835,7 +1503,7 @@ let camY = null;
           p.y += p.vy * dt;
 
           // ground collision against terrain profile
-          const gy = terrainY(p.x);
+          const gy = groundYAt(p.x, p.y);
           if (p.y + p.radius >= gy) {
             p.y = gy - p.radius;
             p.vy = -Math.abs(p.vy) * (0.35 + BOUNCE * 0.65);
@@ -885,7 +1553,7 @@ let camY = null;
           }
           p.x += p.vx * dt;
           p.y += p.vy * dt;
-          const gy = terrainY(p.x);
+          const gy = groundYAt(p.x, p.y);
           if (p.y + p.radius >= gy) {
             p.y = gy - p.radius;
             p.vy *= -0.1;
@@ -1043,7 +1711,7 @@ let camY = null;
           p.y += p.vy * dt;
           p.ang += p.angVel * dt;
           // bounce on ground lightly
-          const gy = terrainY(p.x);
+          const gy = groundYAt(p.x, p.y);
           if (p.y + p.size >= gy) {
             p.y = gy - p.size;
             p.vy = -Math.abs(p.vy) * 0.25;
@@ -1105,7 +1773,7 @@ let camY = null;
             bomb.x = terrain.width;
             bomb.vx = -Math.abs(bomb.vx) * 0.35;
           }
-          const groundY = terrainY(bomb.x);
+          const groundY = groundYAt(bomb.x, bomb.y);
           const radius = bomb.radius;
           if (bomb.y + radius >= groundY) {
             bomb.y = groundY - radius;
@@ -1232,8 +1900,8 @@ let camY = null;
         const smokeCount = 20 + (Math.random() * 12 | 0);
         for (let i = 0; i < smokeCount; i++) {
           const spread = (Math.random() - 0.5) * BOMB_MAX_RADIUS * 1.2;
-          const spawnX = Math.max(0, Math.min(terrain.width, x + spread));
-          const groundY = terrainY(spawnX);
+          const spawnX = clamp(x + spread, 0, terrain.width);
+          const groundY = groundYAt(spawnX, y);
           const radius = 14 + Math.random() * 16;
           const life = 1700 + Math.random() * 1400;
           blastSmoke.push({
@@ -1250,118 +1918,44 @@ let camY = null;
           });
         }
 
-        deformTerrainAt(x, BOMB_MAX_RADIUS, BOMB_MAX_DEPTH);
-        const blastY = terrainY(x);
+        deformTerrainAt(x, y, BOMB_MAX_RADIUS, BOMB_MAX_DEPTH);
+        const blastY = groundYAt(x, y);
         applyExplosionEffects(x, blastY, bomb);
       }
 
-      function deformTerrainAt(x, radius, depth) {
-        if (!terrain.samples || terrain.samples.length === 0) return;
-        if (radius <= 0 || depth <= 0) return;
-        const step = terrain.step;
-        const samples = terrain.samples;
-        const centerIdx = Math.round(x / step);
-        const radiusSamples = Math.ceil(radius / step);
-        const start = Math.max(0, centerIdx - radiusSamples - 2);
-        const end = Math.min(samples.length - 1, centerIdx + radiusSamples + 2);
-        const padStartIdx = Math.floor(pad.x / step);
-        const padEndIdx = Math.floor((pad.x + pad.w) / step);
-
-        for (let i = start; i <= end; i++) {
-          const sampleX = i * step;
-          const dx = sampleX - x;
-          const dist = Math.abs(dx);
-          if (dist > radius) continue;
-          if (i >= padStartIdx && i <= padEndIdx) continue;
-          const t = dist / radius;
-          const falloff = Math.max(0, 1 - t * t);
-          if (falloff <= 0) continue;
-          const delta = depth * falloff;
-          const newY = samples[i] + delta;
-          samples[i] = Math.min(height, newY);
-        }
-
-        const smoothIterations = 2;
-        for (let iter = 0; iter < smoothIterations; iter++) {
-          const snapshot = samples.slice();
-          for (let i = start; i <= end; i++) {
-            if (i <= 0 || i >= samples.length - 1) continue;
-            if (i >= padStartIdx && i <= padEndIdx) continue;
-            const neighborAvg = (snapshot[i - 1] + snapshot[i] + snapshot[i + 1]) / 3;
-            const blended = snapshot[i] * 0.6 + neighborAvg * 0.4;
-            samples[i] = Math.min(height, blended);
-          }
-        }
-
-        // Keep landing pad aligned to the current terrain profile beneath it
-        const padIdxStart = Math.max(0, Math.floor(pad.x / step));
-        const padIdxEnd = Math.min(samples.length - 1, Math.floor((pad.x + pad.w) / step));
-        let padSurface = samples[padIdxStart];
-        for (let i = padIdxStart + 1; i <= padIdxEnd; i++) {
-          if (samples[i] < padSurface) padSurface = samples[i];
-        }
-        pad.y = Math.max(0, Math.min(height - pad.h, padSurface - pad.h));
-
-        // Nudge lander upward if terrain carved out beneath it
-        const landerDist = Math.abs(lander.x - x);
-        if (landerDist <= radius + lander.width) {
-          const contactPoints = getLanderContactPoints();
-          let maxPenetration = 0;
-          for (const pt of contactPoints) {
-            const groundY = terrainY(pt.x);
-            const penetration = pt.y - groundY;
-            if (penetration > maxPenetration) {
-              maxPenetration = penetration;
+      function deformTerrainAt(x, y, radius, depth) {
+        if (radius <= 0) return;
+        const cellSize = terrain.cellSize;
+        const radiusSq = radius * radius;
+        const minCol = Math.max(0, Math.floor((x - radius) / cellSize));
+        const maxCol = Math.min(terrain.cols - 1, Math.ceil((x + radius) / cellSize));
+        const minRow = Math.max(0, Math.floor((y - depth - radius) / cellSize));
+        const maxRow = Math.min(terrain.rows - 1, Math.ceil((y + radius) / cellSize));
+        for (let row = minRow; row <= maxRow; row++) {
+          for (let col = minCol; col <= maxCol; col++) {
+            const cx = (col + 0.5) * cellSize;
+            const cy = (row + 0.5) * cellSize;
+            const dx = cx - x;
+            const dy = cy - y;
+            if (dx * dx + dy * dy <= radiusSq) {
+              setSolidCell(col, row, 0);
             }
           }
-          if (maxPenetration > 0) {
-            const lift = Math.min(BOMB_SELF_PUSH, maxPenetration + 2);
-            lander.y -= lift;
-            if (lander.vy > 0) lander.vy = 0;
-          }
         }
+        terrain.dirtyRender = true;
+        alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
       }
 
       // --- Engine dust/smoke when close to terrain ---
       function castThrustRay(originX, originY, dirX, dirY, maxDistance) {
-        // Ray-march the exhaust downwards until it collides with terrain.
         if (dirY <= 0) return null;
-        const clampX = (x) => Math.max(0, Math.min(terrain.width, x));
-        const step = Math.max(2, terrain.step * 0.5);
-        const maxSteps = Math.ceil(maxDistance / step);
-        let traveled = 0;
-        let prevX = originX;
-        let prevY = originY;
-        for (let i = 0; i < maxSteps; i++) {
-          const nextX = prevX + dirX * step;
-          const nextY = prevY + dirY * step;
-          const groundY = terrainY(clampX(nextX));
-          if (nextY >= groundY) {
-            let lo = 0;
-            let hi = 1;
-            let hitX = nextX;
-            let hitY = groundY;
-            for (let j = 0; j < 5; j++) {
-              const mid = (lo + hi) / 2;
-              const testX = prevX + dirX * step * mid;
-              const testY = prevY + dirY * step * mid;
-              const testGround = terrainY(clampX(testX));
-              if (testY >= testGround) {
-                hi = mid;
-                hitX = testX;
-                hitY = testGround;
-              } else {
-                lo = mid;
-              }
-            }
-            const hitDistance = traveled + hi * step;
-            return { x: clampX(hitX), y: hitY, distance: hitDistance };
-          }
-          traveled += step;
-          prevX = nextX;
-          prevY = nextY;
-        }
-        return null;
+        const hit = findSurfaceAlongRay(originX, originY, dirX, dirY, maxDistance);
+        if (!hit) return null;
+        const row = Math.floor(clamp(hit.y, 0, terrain.height - 1) / terrain.cellSize);
+        const surfaceY = row * terrain.cellSize;
+        const clampedX = clamp(hit.x, 0, terrain.width);
+        const distance = Math.hypot(clampedX - originX, surfaceY - originY);
+        return { x: clampedX, y: surfaceY, distance };
       }
 
       function spawnSmoke(x, y, count, spread, pushUp, prox) { // prox in [0,1] (ADJUST near emission site)
@@ -1386,8 +1980,8 @@ let camY = null;
           const sizeJitter = 0.6 + Math.random() * 1.4;   // vary dust scale per particle
           const sizeBoost = 4 * prox;                     // ADJUST proximity size gain
           const radius = (baseR + sizeBoost) * sizeJitter;
-          const spawnX = Math.max(0, Math.min(terrain.width, x + (Math.random() - 0.5) * 12));
-          const groundY = terrainY(spawnX);
+          const spawnX = clamp(x + (Math.random() - 0.5) * 12, 0, terrain.width);
+          const groundY = groundYAt(spawnX, y);
           const biasDepth = radius * (0.35 + Math.random() * 0.55);
           const surfaceChance = 0.18;
           const buryDepth = Math.random() < surfaceChance ? Math.random() * radius * 0.25 : biasDepth;
@@ -1447,7 +2041,7 @@ let camY = null;
           p.x += p.vx * dt;
           p.y += p.vy * dt;
           // collide with ground softly
-          const gy = terrainY(p.x);
+          const gy = groundYAt(p.x, p.y);
           if (p.y + p.r >= gy) {
             p.y = gy - p.r;
             p.vy *= -0.15;
@@ -1510,19 +2104,23 @@ let camY = null;
       }
 
       function drawTerrain() {
-        // ground fill from terrain profile down to bottom of screen
+        const cellSize = terrain.cellSize;
         ctx.fillStyle = '#332c4a';
-        ctx.beginPath();
-        ctx.moveTo(0, height);
-        for (let x = 0; x <= terrain.width; x += terrain.step) {
-          ctx.lineTo(x, terrainY(x));
+        for (let row = 0; row < terrain.rows; row++) {
+          let runStart = -1;
+          for (let col = 0; col <= terrain.cols; col++) {
+            const solid = col < terrain.cols ? isSolidCell(col, row) : false;
+            if (solid) {
+              if (runStart === -1) runStart = col;
+            } else if (runStart !== -1) {
+              const x = runStart * cellSize;
+              const y = row * cellSize;
+              const w = (col - runStart) * cellSize;
+              ctx.fillRect(x, y, w, cellSize);
+              runStart = -1;
+            }
+          }
         }
-        if ((terrain.width % terrain.step) !== 0) {
-          ctx.lineTo(terrain.width, terrainY(terrain.width));
-        }
-        ctx.lineTo(terrain.width, height);
-        ctx.closePath();
-        ctx.fill();
 
         // landing pad drawn on top
         ctx.fillStyle = `rgba(46, 204, 113, ${padGlowAlpha})`;
@@ -1538,20 +2136,75 @@ let camY = null;
         }
       }
 
+      function drawEditorGuides() {
+        ctx.save();
+        ctx.lineWidth = 2;
+        // highlight pad edges for clarity
+        ctx.strokeStyle = 'rgba(46, 204, 113, 0.8)';
+        ctx.strokeRect(pad.x, pad.y, pad.w, pad.h);
+        const spawn = editorState.spawn;
+        ctx.fillStyle = '#4da3ff';
+        ctx.beginPath();
+        ctx.arc(spawn.x, spawn.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.fillStyle = '#d8ecff';
+        ctx.font = '12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Spawn', spawn.x, spawn.y - 16);
+        ctx.fillStyle = '#b8ffd4';
+        ctx.fillText('Landing', pad.x + pad.w / 2, pad.y - 8);
+        ctx.textAlign = 'left';
+        const cursor = editorState.cursorWorld;
+        if (cursor) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+          ctx.beginPath();
+          ctx.moveTo(cursor.x - 10, cursor.y);
+          ctx.lineTo(cursor.x + 10, cursor.y);
+          ctx.moveTo(cursor.x, cursor.y - 10);
+          ctx.lineTo(cursor.x, cursor.y + 10);
+          ctx.stroke();
+          const option = editorState.placementOptions[editorState.placementIndex];
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(labelForPlacement(option), cursor.x + 12, cursor.y - 12);
+        }
+        ctx.restore();
+      }
+
       function drawHUD() {
-        info.textContent = `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
-        if (gameOver) {
+        const isGameplay = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        if (isGameplay) {
+          info.textContent = `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
+          info.style.display = 'block';
+        } else if (appMode === APP_MODE.EDITOR) {
+          const option = editorState.placementOptions[editorState.placementIndex];
+          info.textContent = `Editor | Active: ${labelForPlacement(option)}`;
+          info.style.display = 'block';
+        } else {
+          info.textContent = '';
+          info.style.display = 'none';
+        }
+        if (isGameplay && gameOver) {
           ctx.fillStyle = '#ffffff';
           ctx.font = '16px sans-serif';
           ctx.textAlign = 'center';
           ctx.fillText(message, width / 2, 28);
+        } else if (appMode === APP_MODE.EDITOR) {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '16px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('Level Editor', width / 2, 28);
         }
       }
 
       function drawDebugOverlay(k) {
         // Hide the DOM info panel so it doesn't cover the canvas debug overlay
         if (typeof info !== 'undefined' && info) {
-          info.style.display = showDebug ? 'none' : 'block';
+          const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+          if (gameplayMode) {
+            info.style.display = showDebug ? 'none' : 'block';
+          }
         }
         if (!showDebug) return;
         // Ensure overlay renders in screen space with full opacity
@@ -1608,6 +2261,11 @@ let camY = null;
         if (padFlash > 0) padFlash -= dt;
         padPulsePhase = (padPulsePhase + (dt / PAD_PULSE_PERIOD) * Math.PI * 2) % (Math.PI * 2);
         padGlowAlpha = 0.525 + 0.325 * Math.sin(padPulsePhase);
+        const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        if (!gameplayMode) {
+          audio.setThrusterActive(false);
+          return;
+        }
         if (gameOver) {
           audio.setThrusterActive(false);
           return;
@@ -1677,51 +2335,90 @@ let camY = null;
         let maxPenetration = 0;
         let impactPoint = null;
         for (const pt of contactPoints) {
-          const groundY = terrainY(pt.x);
-          const penetration = pt.y - groundY;
-          if (penetration > maxPenetration) {
-            maxPenetration = penetration;
-            impactPoint = { ...pt, groundY };
+          const info = resolvePenetrationAt(pt.x, pt.y);
+          if (info.depth > 0.0001) {
+            lander.x += info.normal.x * info.depth;
+            lander.y += info.normal.y * info.depth;
+            const vDot = lander.vx * info.normal.x + lander.vy * info.normal.y;
+            if (vDot > 0) {
+              lander.vx -= info.normal.x * vDot;
+              lander.vy -= info.normal.y * vDot;
+            }
+            if (info.depth > maxPenetration) {
+              maxPenetration = info.depth;
+              impactPoint = {
+                ...pt,
+                x: pt.x + info.normal.x * info.depth,
+                y: pt.y + info.normal.y * info.depth,
+                normal: info.normal,
+              };
+            }
           }
         }
         if (maxPenetration > 0) {
-          lander.y -= maxPenetration;
           const settledPoints = getLanderContactPoints();
           const footContacts = settledPoints
             .filter(pt => pt.type === 'foot')
-            .map(pt => ({ ...pt, groundY: terrainY(pt.x) }));
-          const touchingFeet = footContacts.filter(pt => Math.abs(pt.groundY - pt.y) < 1);
+            .map(pt => {
+              const sampleOffset = terrain.cellSize * 0.35;
+              const footInfo = resolvePenetrationAt(pt.x, pt.y + sampleOffset);
+              const surface = footInfo.surfaceY != null
+                ? footInfo.surfaceY
+                : groundYAt(pt.x, pt.y + terrain.cellSize * 0.5);
+              const gap = surface - pt.y;
+              return {
+                ...pt,
+                surfaceY: surface,
+                gap,
+                penetration: footInfo.depth,
+                normal: footInfo.normal,
+              };
+            });
+          const touchingFeet = footContacts.filter(pt => {
+            const supported = pt.penetration > 0 || (pt.surfaceY != null && pt.surfaceY - pt.y <= terrain.cellSize * 0.75);
+            const normalUp = !pt.normal || pt.normal.y <= -0.1;
+            return supported && normalUp;
+          });
           const speed = Math.hypot(lander.vx, lander.vy);
           const uprightTol = 0.26; // radians (~15°)
           const normalizedAngle = ((lander.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
           const uprightNow = normalizedAngle < uprightTol || normalizedAngle > Math.PI * 2 - uprightTol;
           const padLeft = pad.x - 1;
           const padRight = pad.x + pad.w + 1;
-          const onPad = touchingFeet.length > 0 && touchingFeet.every(pt => pt.x >= padLeft && pt.x <= padRight);
+          const onPad = touchingFeet.length > 0 && touchingFeet.every(pt => {
+            if (pt.surfaceY == null) return false;
+            const top = pad.y + pad.h;
+            return pt.x >= padLeft && pt.x <= padRight && Math.abs(top - pt.surfaceY) <= terrain.cellSize;
+          });
           const okSpeed = speed < 0.09;
           const okVx = Math.abs(lander.vx) < 0.07;
           const okVy = lander.vy < 0.07;
           if (onPad && uprightNow && okSpeed && okVx && okVy) {
             landed = true;
-            shouldRegen = true;
-            nextLevelIndex = (currentLevelIndex + 1) % levels.length;
             gameOver = true;
             exploded = false;
             lander.vx = 0;
             lander.vy = 0;
             lander.angularVelocity = 0;
-            const upcoming = levels[nextLevelIndex].name;
-            message = `Nice landing! Press R to explore ${upcoming}`;
+            if (appMode === APP_MODE.TEST) {
+              shouldRegen = false;
+              message = 'Test complete! Press Esc to edit or R to retry';
+            } else {
+              shouldRegen = true;
+              nextLevelIndex = (currentLevelIndex + 1) % levels.length;
+              const upcoming = levels[nextLevelIndex].name;
+              message = `Nice landing! Press R to explore ${upcoming}`;
+            }
             const touchdownY = touchingFeet.length
-              ? touchingFeet.reduce((min, pt) => Math.min(min, pt.groundY), touchingFeet[0].groundY)
-              : terrainY(lander.x);
+              ? touchingFeet.reduce((min, pt) => Math.min(min, pt.surfaceY ?? min), touchingFeet[0].surfaceY ?? lander.y)
+              : groundYAt(lander.x, lander.y);
             spawnWinFx(lander.x, touchdownY - 12);
             padFlash = 1200;
             audio.stopThrusterImmediate();
             audio.playWinChime();
           } else {
             const crashX = impactPoint ? impactPoint.x : lander.x;
-            const crashY = impactPoint ? impactPoint.groundY : terrainY(lander.x);
+            const crashY = impactPoint ? impactPoint.y : groundYAt(lander.x, lander.y);
             spawnExplosion(crashX, crashY, lander.vx, lander.vy);
           }
         }
@@ -1738,25 +2435,49 @@ let camY = null;
         ctx.fillRect(0, 0, width, height);
         // Parallax background in screen space (no camera transforms here)
         // --- Camera follow with smoothing and look-ahead ---
-        if (camX === null) { camX = lander.x; camY = lander.y; }
-        const lookX = Math.max(-tune.lookCap, Math.min(tune.lookCap, lander.vx * tune.lookGainX));
-        const lookY = Math.max(-tune.lookCap, Math.min(tune.lookCap, lander.vy * tune.lookGainY));
-        const targetX = lander.x + lookX;
-        const targetY = lander.y + lookY;
-        const k = Math.min(1, dt * tune.camLag);
-        camX += (targetX - camX) * k;
-        camY += (targetY - camY) * k;
-        const halfViewX = width / 2;
-        if (terrain.width <= width) {
-          camX = terrain.width / 2;
-        } else {
-          const minCamX = halfViewX;
-          const maxCamX = terrain.width - halfViewX;
-          camX = Math.max(minCamX, Math.min(maxCamX, camX));
+        const isGameplay = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        const isEditor = appMode === APP_MODE.EDITOR;
+        if (camX === null) {
+          if (isGameplay) {
+            camX = lander.x;
+            camY = lander.y;
+          } else if (isEditor) {
+            camX = editorState.camX ?? terrain.width / 2;
+            camY = editorState.camY ?? height * 0.65;
+          } else {
+            camX = width / 2;
+            camY = height / 2;
+          }
         }
-        const groundFloor = height * 0.5;
-        const ceiling = height * 0.15;
-        camY = Math.max(ceiling, Math.min(groundFloor, camY));
+        let k = 0;
+        if (isGameplay) {
+          const lookX = Math.max(-tune.lookCap, Math.min(tune.lookCap, lander.vx * tune.lookGainX));
+          const lookY = Math.max(-tune.lookCap, Math.min(tune.lookCap, lander.vy * tune.lookGainY));
+          const targetX = lander.x + lookX;
+          const targetY = lander.y + lookY;
+          k = Math.min(1, dt * tune.camLag);
+          camX += (targetX - camX) * k;
+          camY += (targetY - camY) * k;
+          const halfViewX = width / 2;
+          if (terrain.width <= width) {
+            camX = terrain.width / 2;
+          } else {
+            const minCamX = halfViewX;
+            const maxCamX = terrain.width - halfViewX;
+            camX = Math.max(minCamX, Math.min(maxCamX, camX));
+          }
+          const groundFloor = height * 0.5;
+          const ceiling = height * 0.15;
+          camY = Math.max(ceiling, Math.min(groundFloor, camY));
+        } else if (isEditor) {
+          camX = editorState.camX ?? terrain.width / 2;
+          camY = editorState.camY ?? height * 0.65;
+          k = 0;
+        } else {
+          camX = width / 2;
+          camY = height / 2;
+          k = 0;
+        }
         // --- End camera follow ---
         tileLayer(bgFar,  -camX * tune.parallaxFar, -camY * tune.parallaxFar);
         tileLayer(bgNear, -camX * tune.parallaxNear, -camY * tune.parallaxNear);
@@ -1764,14 +2485,20 @@ let camY = null;
         // Center the world so the lander stays in the middle
         ctx.save();
         ctx.translate(width / 2 - camX, height / 2 - camY);
-        drawTerrain();
-        drawBombs();
-        drawSmoke();
-        drawBlastSmoke();
-        drawWreckFlames();
-        drawLander();
-        drawDebris();
-        drawWinFx();
+        if (isGameplay || isEditor) {
+          drawTerrain();
+          if (isGameplay) {
+            drawBombs();
+            drawSmoke();
+            drawBlastSmoke();
+            drawWreckFlames();
+            drawLander();
+            drawDebris();
+            drawWinFx();
+          } else if (isEditor) {
+            drawEditorGuides();
+          }
+        }
         ctx.restore();
         drawHUD();
         drawDebugOverlay(k);
@@ -1780,8 +2507,8 @@ let camY = null;
 
       window.addEventListener('resize', resizeCanvas);
       resizeCanvas();
-      generateTerrain(currentLevelIndex);
-      resetGame();
+      enterMenu();
+      updateEditorOverlay();
       requestAnimationFrame(loop);
     })();
   </script>

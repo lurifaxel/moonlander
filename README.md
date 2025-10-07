@@ -11,6 +11,7 @@ A 2D lunar-lander style game with cartoon physics:
 - Ground‑sourced **dust** kicked up by the thrusters; size + opacity scale with proximity to the surface and exhaust ray impact.
 - Success celebration confetti + pad glow.
 - Level regeneration **only after** a successful landing.
+- Start menu with a built-in level editor for custom terrain, spawn, and landing pads.
 
 ## Run
 Open `index.html` in a modern browser (Chrome/Firefox). No build step.
@@ -21,6 +22,17 @@ The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 an
 - **← / →**: Rotate (with momentum)
 - **R**: Restart round
 - **H**: Toggle debug/tuning overlay (if enabled in code)
+- **Esc**: Return to the main menu (or back to the editor when testing custom levels)
+
+### Level editor
+Choose **Create Level** on the start menu to enter the editor:
+- **Left-click & drag**: sculpt the ground contour in realtime.
+- **Scroll wheel**: cycle the active placement between spawn point and landing zone.
+- **Click** (without dragging): place the currently selected object.
+- **R**: spawn the lander to test your custom level.
+- **Esc**: leave test mode back to editing, or exit the editor to the start menu.
+- **Hold Alt + drag**: carve terrain away to sculpt caverns and overhangs; release Alt to add material again.
+- Landing pads snap to the surface you click—even under overhangs—so you can build cavern pads.
 
 ## Gameplay rules
 - Land while **over the pad**, roughly upright, and below speed thresholds. On success, you’ll see confetti and a glowing pad. Press **R** for the **next level** (terrain regenerates).
@@ -28,7 +40,8 @@ The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 an
 
 ## Systems
 - **Terrain**
-  - `generateTerrain()` builds a smoothed random profile and carves a flat segment for the pad. `terrainY(x)` returns ground height.
+  - `generateTerrain()` builds a solid grid of voxels, flattening a pad segment for stock levels while the editor can add or carve cells away.
+  - Helpers such as `groundYAt(x)`/`findSurfaceBelow(x, y)` turn the grid into collision surfaces.
   - Regenerated only when `shouldRegen` is set by a successful landing.
 - **Camera & Parallax**
   - Smoothed follow with velocity‑based look‑ahead. Parallax layers scroll by `camX/camY`.
