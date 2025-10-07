@@ -14,6 +14,7 @@ A 2D lunar-lander style game with cartoon physics:
 
 ## Run
 Open `index.html` in a modern browser (Chrome/Firefox). No build step.
+The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
 
 ## Controls
 - **↑**: Main engine thrust

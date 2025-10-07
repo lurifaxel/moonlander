@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Text after successful landing does not signal restart.
 
+### Changed
+
+- Enlarged and centered the playfield; canvas now scales with the browser up to 1280x720 for a more immersive layout.
+
 ## [0.1.0] - 2025-10-04
 
 ### Added

@@ -10,14 +10,22 @@
       margin: 0;
       padding: 0;
       background: #101420;
-      overflow: hidden;
       color: #fafafa;
       font-family: sans-serif;
+      height: 100%;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      position: relative;
     }
     #gameCanvas {
       display: block;
-      margin: 0 auto;
       background: transparent;
+      flex-shrink: 0;
     }
     #info {
       position: absolute;
@@ -25,6 +33,7 @@
       left: 10px;
       color: white;
       font-size: 14px;
+      pointer-events: none;
     }
   </style>
 </head>
@@ -36,8 +45,14 @@
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d');
       const info = document.getElementById('info');
-      const width = canvas.width;
-      const height = canvas.height;
+      let width = canvas.width;
+      let height = canvas.height;
+
+      const TARGET_ASPECT = 16 / 9;
+      const MAX_VIEW_WIDTH = 1280;
+      const MAX_VIEW_HEIGHT = 720;
+      const MIN_VIEW_WIDTH = 600;
+      const MIN_VIEW_HEIGHT = 400;
 
       // --- Procedural terrain (peaks, valleys, and a flat pad segment) ---
       const levels = [
@@ -220,7 +235,46 @@ let wreckFlames = []; // persistent burning wreckage
 let bombs = []; // active bombs dropped by the lander
 let bombCooldown = 0; // ms remaining until next bomb can be dropped
 
-let camX = null; let camY = null;
+let camX = null;
+let camY = null;
+
+      function resizeCanvas() {
+        const availWidth = window.innerWidth * 0.9;
+        const availHeight = window.innerHeight * 0.9;
+        const maxWidth = Math.min(availWidth, MAX_VIEW_WIDTH);
+        const maxHeight = Math.min(availHeight, MAX_VIEW_HEIGHT);
+
+        let targetWidth = maxWidth;
+        let targetHeight = targetWidth / TARGET_ASPECT;
+
+        if (targetHeight > maxHeight) {
+          targetHeight = maxHeight;
+          targetWidth = targetHeight * TARGET_ASPECT;
+        }
+
+        const minWidthCap = Math.min(MIN_VIEW_WIDTH, window.innerWidth);
+        const minHeightCap = Math.min(MIN_VIEW_HEIGHT, window.innerHeight);
+
+        if (targetWidth < minWidthCap) {
+          targetWidth = minWidthCap;
+          targetHeight = targetWidth / TARGET_ASPECT;
+        }
+
+        if (targetHeight < minHeightCap) {
+          targetHeight = minHeightCap;
+          targetWidth = targetHeight * TARGET_ASPECT;
+        }
+
+        canvas.width = Math.round(targetWidth);
+        canvas.height = Math.round(targetHeight);
+        canvas.style.width = `${Math.round(targetWidth)}px`;
+        canvas.style.height = `${Math.round(targetHeight)}px`;
+        width = canvas.width;
+        height = canvas.height;
+
+        camX = null;
+        camY = null;
+      }
 
       function getLanderContactPoints() {
         const cos = Math.cos(lander.angle);
@@ -1724,6 +1778,8 @@ let camX = null; let camY = null;
         requestAnimationFrame(loop);
       }
 
+      window.addEventListener('resize', resizeCanvas);
+      resizeCanvas();
       generateTerrain(currentLevelIndex);
       resetGame();
       requestAnimationFrame(loop);
