@@ -145,6 +145,24 @@
           roughWaveFreq: 0.037,
           noiseScale: 0.12,
           padOffset: 0.78,
+          meteors: [
+            {
+              startMs: 6000,
+              warningLeadMs: 2600,
+              speed: 0.34,
+              radius: 28,
+              spawn: { x: 340, y: -210 },
+              target: { x: 840, y: height * 0.78 },
+            },
+            {
+              startMs: 11200,
+              warningLeadMs: 3200,
+              speed: 0.28,
+              radius: 34,
+              spawn: { x: 1460, y: -240 },
+              target: { x: 1180, y: height * 0.82 },
+            },
+          ],
         },
         {
           name: 'Basalt Dunes',
@@ -184,6 +202,7 @@
         levelName: levels[0].name,
         dirtyRender: true,
         blackHoles: [],
+        meteors: [],
       };
       const pad = { x: 0, y: 0, w: 110, h: 10 };
       const PAD_PULSE_PERIOD = 3000; // ms for a full pad glow cycle
@@ -200,6 +219,19 @@
       const EXPLOSION_KILL_RADIUS = 74; // px radius that destroys the lander from a blast
       const CRASH_CRATER_RADIUS = 78; // px terrain deformation from crashing
       const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
+
+      const METEOR_TRAIL_INTERVAL = 26;      // ms between trail samples
+      const METEOR_GRAVITY_SCALE = 0.9;      // multiplier applied to g for meteor descent
+      const METEOR_CRATER_RADIUS_SCALE = 2.1; // crater radius multiplier per meteor radius
+      const METEOR_CRATER_DEPTH_SCALE = 1.25; // crater depth multiplier per meteor radius
+      const METEOR_SPARK_COUNT = 18;          // sparks spawned on impact
+      const METEOR_WARNING_FLASH_MS = 280;    // period for warning flash oscillation
+      const METEOR_WARNING_ALPHA_MIN = 0.22;
+      const METEOR_WARNING_ALPHA_MAX = 0.8;
+      const METEOR_MIN_RADIUS = 4;
+      const METEOR_MAX_RADIUS = 140;
+      const METEOR_MIN_SPEED = 0.02;
+      const METEOR_MAX_SPEED = 2.5;
 
       const BLACK_HOLE_EVENT_RADIUS = 42;     // px radius where objects are consumed
       const BLACK_HOLE_PULL_RADIUS = 220;     // px radius where gravity begins to pull
@@ -221,7 +253,7 @@
       const editorState = {
         active: false,
         grid: null,
-        placementOptions: ['spawn', 'landing', 'blackHole'],
+        placementOptions: ['spawn', 'landing', 'blackHole', 'meteor'],
         placementIndex: 0,
         spawn: { x: 180, y: 120 },
         isPainting: false,
@@ -235,6 +267,16 @@
         camY: null,
         testBaseline: null,
         blackHoles: [],
+        meteors: [],
+        meteorDefaults: {
+          startMs: 3500,
+          warningLeadMs: 1600,
+          speed: 0.32,
+          radius: 26,
+        },
+        pendingMeteor: null,
+        isPlacingMeteor: false,
+        selectedMeteor: -1,
       };
 
       function cloneSolidsArray(source) {
@@ -253,6 +295,19 @@
         }));
       }
 
+      function cloneMeteors(source) {
+        if (!source || !source.length) return [];
+        return source.map(m => ({
+          id: m.id ?? null,
+          startMs: Math.max(0, m.startMs ?? 0),
+          warningLeadMs: Math.max(0, m.warningLeadMs ?? 0),
+          speed: Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, m.speed ?? 0.32)),
+          radius: Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, m.radius ?? 20)),
+          spawn: { x: m.spawn?.x ?? 0, y: m.spawn?.y ?? 0 },
+          target: { x: m.target?.x ?? 0, y: m.target?.y ?? 0 },
+        }));
+      }
+
       function restoreTerrainFromBaseline() {
         const baseline = editorState.testBaseline;
         if (!baseline) return;
@@ -265,9 +320,13 @@
         const baselineHoles = baseline.blackHoles ? baseline.blackHoles : [];
         terrain.blackHoles = cloneBlackHoles(baselineHoles);
         editorState.blackHoles = terrain.blackHoles;
+        const baselineMeteors = baseline.meteors ? baseline.meteors : [];
+        terrain.meteors = cloneMeteors(baselineMeteors);
+        editorState.meteors = terrain.meteors;
         if (editorState.grid) {
           editorState.grid.solids = terrain.solids;
           editorState.grid.blackHoles = terrain.blackHoles;
+          editorState.grid.meteors = terrain.meteors;
         }
       }
 
@@ -283,6 +342,9 @@
         terrain.dirtyRender = true;
         if (!Array.isArray(terrain.blackHoles)) {
           terrain.blackHoles = [];
+        }
+        if (!Array.isArray(terrain.meteors)) {
+          terrain.meteors = [];
         }
       }
 
@@ -300,6 +362,7 @@
         terrain.levelName = level.name;
         initTerrainGrid(level.worldWidth);
         terrain.blackHoles = [];
+        terrain.meteors = cloneMeteors(level.meteors);
 
         const step = terrain.cellSize;
         const cols = terrain.cols;
@@ -506,6 +569,8 @@
           };
           editorState.blackHoles = [];
           terrain.blackHoles = editorState.blackHoles;
+          editorState.meteors = [];
+          terrain.meteors = editorState.meteors;
           editorState.spawn.x = Math.min(worldWidth * 0.18, worldWidth - 200);
           const spawnSurface = findSurfaceBelow(editorState.spawn.x, height * 0.6);
           editorState.spawn.y = (spawnSurface ? spawnSurface.y : height * 0.75) - 140;
@@ -523,6 +588,10 @@
             editorState.blackHoles = cloneBlackHoles(editorState.grid.blackHoles);
           }
           terrain.blackHoles = editorState.blackHoles;
+          if (editorState.grid.meteors) {
+            editorState.meteors = cloneMeteors(editorState.grid.meteors);
+          }
+          terrain.meteors = editorState.meteors;
         }
         editorState.active = true;
         editorState.brushRadius = editorState.brushRadius || 26;
@@ -540,8 +609,12 @@
           rows: terrain.rows,
           solids: terrain.solids,
           blackHoles: editorState.blackHoles,
+          meteors: editorState.meteors,
         };
         editorState.testBaseline = null;
+        editorState.pendingMeteor = null;
+        editorState.isPlacingMeteor = false;
+        editorState.selectedMeteor = -1;
       }
 
       function alignEditorSpawn() {
@@ -588,6 +661,16 @@
           terrain.blackHoles = editorState.blackHoles;
         }
         return editorState.blackHoles;
+      }
+
+      function ensureEditorMeteors() {
+        if (!Array.isArray(editorState.meteors)) {
+          editorState.meteors = [];
+        }
+        if (terrain.meteors !== editorState.meteors) {
+          terrain.meteors = editorState.meteors;
+        }
+        return editorState.meteors;
       }
 
       function findBlackHoleNear(x, y, radiusMultiplier = 1.1) {
@@ -664,6 +747,110 @@
         return true;
       }
 
+      function findMeteorIndexNear(x, y, radiusMultiplier = 1.0) {
+        const meteors = ensureEditorMeteors();
+        if (!meteors.length) return -1;
+        let index = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < meteors.length; i++) {
+          const meteor = meteors[i];
+          const dx = meteor.spawn.x - x;
+          const dy = meteor.spawn.y - y;
+          const reach = meteor.radius * radiusMultiplier + 14;
+          const dist = Math.hypot(dx, dy);
+          if (dist <= reach && dist < bestDist) {
+            index = i;
+            bestDist = dist;
+          }
+        }
+        return index;
+      }
+
+      function editorRemoveMeteor(x, y) {
+        const meteors = ensureEditorMeteors();
+        const index = findMeteorIndexNear(x, y, 1.6);
+        if (index === -1) return false;
+        meteors.splice(index, 1);
+        editorState.selectedMeteor = -1;
+        terrain.meteors = meteors;
+        editorState.meteors = meteors;
+        terrain.dirtyRender = true;
+        return true;
+      }
+
+      function editorStartMeteorPlacement(x, y) {
+        const meteors = ensureEditorMeteors();
+        editorState.isPlacingMeteor = true;
+        editorState.pendingMeteor = {
+          spawn: { x, y },
+          target: { x, y },
+          radius: Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, editorState.meteorDefaults.radius)),
+          speed: Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, editorState.meteorDefaults.speed)),
+          startMs: editorState.meteorDefaults.startMs,
+          warningLeadMs: editorState.meteorDefaults.warningLeadMs,
+        };
+        editorState.selectedMeteor = -1;
+        terrain.meteors = meteors;
+      }
+
+      function editorCommitPendingMeteor() {
+        const pending = editorState.pendingMeteor;
+        if (!pending) return false;
+        const meteors = ensureEditorMeteors();
+        const placed = {
+          id: `editor-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          spawn: { ...pending.spawn },
+          target: { ...pending.target },
+          radius: Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, pending.radius)),
+          speed: Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, pending.speed)),
+          startMs: Math.max(0, pending.startMs),
+          warningLeadMs: Math.max(0, pending.warningLeadMs),
+        };
+        meteors.push(placed);
+        editorState.pendingMeteor = null;
+        editorState.isPlacingMeteor = false;
+        editorState.selectedMeteor = meteors.length - 1;
+        terrain.meteors = meteors;
+        editorState.meteors = meteors;
+        terrain.dirtyRender = true;
+        return true;
+      }
+
+      function editorCancelPendingMeteor() {
+        if (!editorState.isPlacingMeteor) return;
+        editorState.pendingMeteor = null;
+        editorState.isPlacingMeteor = false;
+      }
+
+      function editorSelectMeteorAt(x, y) {
+        const index = findMeteorIndexNear(x, y, 1.2);
+        editorState.selectedMeteor = index;
+        return index;
+      }
+
+      function adjustSelectedMeteor(mutator) {
+        const meteors = ensureEditorMeteors();
+        const index = editorState.selectedMeteor;
+        if (index < 0 || index >= meteors.length) return false;
+        const meteor = meteors[index];
+        const clone = {
+          ...meteor,
+          spawn: { ...meteor.spawn },
+          target: { ...meteor.target },
+        };
+        const changed = mutator(clone) !== false;
+        if (!changed) return false;
+        clone.radius = Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, clone.radius));
+        clone.speed = Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, clone.speed));
+        clone.startMs = Math.max(0, clone.startMs);
+        clone.warningLeadMs = Math.max(0, clone.warningLeadMs);
+        meteors[index] = clone;
+        terrain.meteors = meteors;
+        editorState.meteors = meteors;
+        terrain.dirtyRender = true;
+        return true;
+      }
+
       function editorApplyBrush(x, y, mode) {
         const radius = editorState.brushRadius;
         const cellSize = terrain.cellSize;
@@ -711,6 +898,7 @@
           case 'spawn': return 'Spawn point';
           case 'landing': return 'Landing zone';
           case 'blackHole': return 'Black hole';
+          case 'meteor': return 'Meteor';
           default: return key;
         }
       }
@@ -782,6 +970,10 @@ let blastSmoke = []; // post-explosion embers smoke
 let wreckFlames = []; // persistent burning wreckage
 let bombs = []; // active bombs dropped by the lander
 let bombCooldown = 0; // ms remaining until next bomb can be dropped
+let meteorTimeline = []; // queued meteor events awaiting spawn
+let meteorWarnings = []; // active warning ghosts
+let activeMeteors = []; // live meteors in-flight
+let meteorTime = 0; // ms since level start for meteor scheduling
 let activeBlackHoles = [];
 let blackHolePhase = 0;
 
@@ -887,6 +1079,8 @@ let camY = null;
           explosion: 0.9,
           death: 0.3,
           win: 0.28,
+          meteorWarn: 0.32,
+          meteorImpact: 0.88,
         };
         const state = {
           ctx: null,
@@ -1121,6 +1315,53 @@ let camY = null;
               osc.stop(start + 0.5);
             });
           },
+          playMeteorWarning() {
+            const ctx = ensureContext();
+            if (!ctx) return;
+            if (ctx.state === 'suspended') return;
+            const osc = ctx.createOscillator();
+            osc.type = 'sine';
+            const gain = ctx.createGain();
+            const now = ctx.currentTime;
+            osc.frequency.setValueAtTime(920, now);
+            osc.frequency.exponentialRampToValueAtTime(450, now + 0.45);
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(levels.meteorWarn, now + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+            osc.connect(gain);
+            gain.connect(state.master);
+            osc.start(now);
+            osc.stop(now + 0.5);
+          },
+          playMeteorImpact() {
+            const ctx = ensureContext();
+            if (!ctx) return;
+            if (ctx.state === 'suspended') return;
+            playNoiseBurst(1.1, 160, 0.7, levels.meteorImpact, 1.2);
+            const boom = ctx.createOscillator();
+            boom.type = 'sine';
+            const rumble = ctx.createOscillator();
+            rumble.type = 'triangle';
+            const gain = ctx.createGain();
+            const rumbleGain = ctx.createGain();
+            const now = ctx.currentTime;
+            boom.frequency.setValueAtTime(130, now);
+            boom.frequency.exponentialRampToValueAtTime(46, now + 1.2);
+            rumble.frequency.setValueAtTime(48, now);
+            rumble.frequency.exponentialRampToValueAtTime(28, now + 1.3);
+            gain.gain.setValueAtTime(levels.meteorImpact * 0.65, now);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+            rumbleGain.gain.setValueAtTime(levels.meteorImpact * 0.35, now);
+            rumbleGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.5);
+            boom.connect(gain);
+            rumble.connect(rumbleGain);
+            gain.connect(state.master);
+            rumbleGain.connect(state.master);
+            boom.start(now);
+            boom.stop(now + 1.4);
+            rumble.start(now);
+            rumble.stop(now + 1.6);
+          },
           reset() {
             this.stopThrusterImmediate();
           },
@@ -1144,17 +1385,24 @@ let camY = null;
           editorPanel.classList.remove('hidden');
           const option = editorState.placementOptions[editorState.placementIndex];
           const placementLabel = labelForPlacement(option);
-          const clickInstruction = option === 'blackHole'
-            ? 'Click: place black hole (Alt + click removes one)'
-            : `Click: place ${placementLabel}`;
-          updateEditorPanel([
+          let clickInstruction = `Click: place ${placementLabel}`;
+          const lines = [
             '<strong>Level Editor</strong>',
             'Left drag: add terrain (hold Alt to carve)',
             `Mouse wheel: select ${placementLabel}`,
-            clickInstruction,
-            'R: test this level',
-            'Esc: back to menu',
-          ]);
+          ];
+          if (option === 'blackHole') {
+            clickInstruction = 'Click: place black hole (Alt + click removes one)';
+          } else if (option === 'meteor') {
+            clickInstruction = 'Click + drag: aim meteor (release to confirm)';
+            lines.push('Alt + click: delete nearest meteor');
+            lines.push('[/ ] radius  |  -/ = speed');
+            lines.push(`,/ . warning lead  |  ;/' (apostrophe) start time`);
+          }
+          lines.splice(3, 0, clickInstruction);
+          lines.push('R: test this level');
+          lines.push('Esc: back to menu');
+          updateEditorPanel(lines);
         } else if (appMode === APP_MODE.TEST) {
           editorPanel.classList.remove('hidden');
           updateEditorPanel([
@@ -1224,6 +1472,7 @@ let camY = null;
           editorState.testBaseline = {
             solids: cloneSolidsArray(terrain.solids),
             blackHoles: cloneBlackHoles(terrain.blackHoles),
+            meteors: cloneMeteors(terrain.meteors),
           };
         } else if (editorState.testBaseline) {
           const solidSnapshot = editorState.testBaseline.solids || editorState.testBaseline;
@@ -1233,10 +1482,13 @@ let camY = null;
           terrain.solids.set(solidSnapshot);
           terrain.blackHoles = cloneBlackHoles(editorState.testBaseline.blackHoles);
           editorState.blackHoles = terrain.blackHoles;
+          terrain.meteors = cloneMeteors(editorState.testBaseline.meteors);
+          editorState.meteors = terrain.meteors;
         }
         appMode = APP_MODE.TEST;
         startMenu.classList.add('hidden');
         exploded = false;
+        terrain.meteors = cloneMeteors(editorState.meteors);
         resetGame(false, {
           spawn: { ...editorState.spawn },
           customTerrain: true,
@@ -1253,6 +1505,7 @@ let camY = null;
           const solidSnapshot = editorState.testBaseline.solids || editorState.testBaseline;
           editorState.grid.solids = cloneSolidsArray(solidSnapshot);
           editorState.grid.blackHoles = cloneBlackHoles(editorState.testBaseline.blackHoles);
+          editorState.grid.meteors = cloneMeteors(editorState.testBaseline.meteors);
         }
         enterEditor(false);
         editorState.testBaseline = null;
@@ -1316,6 +1569,60 @@ let camY = null;
             enterEditorTest();
           }
           return;
+        }
+        if (appMode === APP_MODE.EDITOR) {
+          const placement = editorState.placementOptions[editorState.placementIndex];
+          if (placement === 'meteor') {
+            const adjustDefault = (keyName, delta, min, max) => {
+              const next = Math.max(min, Math.min(max, editorState.meteorDefaults[keyName] + delta));
+              editorState.meteorDefaults[keyName] = next;
+              return next;
+            };
+            const applyToSelection = (mutator, fallbackKey, delta, min, max) => {
+              const changed = adjustSelectedMeteor(mutator);
+              if (!changed && fallbackKey) {
+                const next = adjustDefault(fallbackKey, delta, min, max);
+                if (editorState.pendingMeteor) {
+                  editorState.pendingMeteor[fallbackKey] = next;
+                }
+              }
+            };
+            switch (key) {
+              case '[':
+                e.preventDefault();
+                applyToSelection(m => { m.radius = Math.max(METEOR_MIN_RADIUS, m.radius - 2); }, 'radius', -2, METEOR_MIN_RADIUS, METEOR_MAX_RADIUS);
+                break;
+              case ']':
+                e.preventDefault();
+                applyToSelection(m => { m.radius = Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, m.radius + 2)); }, 'radius', 2, METEOR_MIN_RADIUS, METEOR_MAX_RADIUS);
+                break;
+              case '-':
+                e.preventDefault();
+                applyToSelection(m => { m.speed = Math.max(METEOR_MIN_SPEED, m.speed - 0.02); }, 'speed', -0.02, METEOR_MIN_SPEED, METEOR_MAX_SPEED);
+                break;
+              case '=':
+              case '+':
+                e.preventDefault();
+                applyToSelection(m => { m.speed = Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, m.speed + 0.02)); }, 'speed', 0.02, METEOR_MIN_SPEED, METEOR_MAX_SPEED);
+                break;
+              case ',':
+                e.preventDefault();
+                applyToSelection(m => { m.warningLeadMs = Math.max(0, m.warningLeadMs - 250); }, 'warningLeadMs', -250, 0, 20000);
+                break;
+              case '.':
+                e.preventDefault();
+                applyToSelection(m => { m.warningLeadMs = Math.max(0, m.warningLeadMs + 250); }, 'warningLeadMs', 250, 0, 20000);
+                break;
+              case ';':
+                e.preventDefault();
+                applyToSelection(m => { m.startMs = Math.max(0, m.startMs - 250); }, 'startMs', -250, 0, 60000);
+                break;
+              case "'":
+                e.preventDefault();
+                applyToSelection(m => { m.startMs = Math.max(0, m.startMs + 250); }, 'startMs', 250, 0, 60000);
+                break;
+            }
+          }
         }
         // --- Tuning keys ---
         const step = (v, s, min, max) => Math.max(min, Math.min(max, v + s));
@@ -1387,6 +1694,23 @@ let camY = null;
           editorState.lastPointer = null;
           return;
         }
+        if (option === 'meteor') {
+          if (e.altKey) {
+            if (!editorRemoveMeteor(world.x, world.y)) {
+              editorState.selectedMeteor = -1;
+            }
+            editorCancelPendingMeteor();
+            return;
+          }
+          const selected = findMeteorIndexNear(world.x, world.y, 1.3);
+          if (selected !== -1) {
+            editorState.selectedMeteor = selected;
+            editorCancelPendingMeteor();
+            return;
+          }
+          editorStartMeteorPlacement(world.x, world.y);
+          return;
+        }
         editorState.isPainting = true;
         editorState.hasMoved = false;
         editorState.lastPointer = { ...world };
@@ -1398,6 +1722,12 @@ let camY = null;
         if (appMode !== APP_MODE.EDITOR) return;
         const world = screenToWorld(e.offsetX, e.offsetY);
         editorState.cursorWorld = { ...world };
+        const option = editorState.placementOptions[editorState.placementIndex];
+        if (option === 'meteor') {
+          if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
+            editorState.pendingMeteor.target = { ...world };
+          }
+        }
         if (!editorState.isPainting) return;
         const prev = editorState.lastPointer;
         if (!editorState.hasMoved) {
@@ -1427,7 +1757,7 @@ let camY = null;
         editorState.pendingPaintStart = null;
         editorState.lastPointer = null;
         const option = editorState.placementOptions[editorState.placementIndex];
-        if (option === 'blackHole') return;
+        if (option === 'blackHole' || option === 'meteor') return;
         if (!moved) {
           if (option === 'spawn') {
             editorPlaceSpawn(world.x, world.y);
@@ -1441,12 +1771,23 @@ let camY = null;
         if (appMode !== APP_MODE.EDITOR) return;
         if (e.button !== 0) return;
         const world = screenToWorld(e.offsetX, e.offsetY);
+        const option = editorState.placementOptions[editorState.placementIndex];
+        if (option === 'meteor') {
+          if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
+            editorState.pendingMeteor.target = { ...world };
+            editorCommitPendingMeteor();
+          }
+          return;
+        }
         endEditorStroke(world);
       });
 
       canvas.addEventListener('mouseleave', () => {
         if (appMode !== APP_MODE.EDITOR) return;
         editorState.cursorWorld = null;
+        if (editorState.isPlacingMeteor) {
+          editorCancelPendingMeteor();
+        }
         if (!editorState.isPainting) return;
         editorState.isPainting = false;
         editorState.lastPointer = null;
@@ -1498,6 +1839,7 @@ let camY = null;
         wreckFlames = [];
         bombs = [];
         bombCooldown = 0;
+        resetMeteorState();
         activeBlackHoles = cloneBlackHoles(terrain.blackHoles);
         blackHolePhase = 0;
         audio.reset();
@@ -1907,28 +2249,35 @@ let camY = null;
           p.life -= dt;
           if (p.life <= 0) continue;
           const lifeRatio = Math.max(0, p.life / p.lifeStart);
-          const growthBase = p.source === 'wreck' ? 1.35 : 1.1;
+          const source = p.source || 'blast';
+          const isWreck = source === 'wreck';
+          const isMeteor = source === 'meteor';
+          const growthBase = isWreck ? 1.35 : isMeteor ? 1.45 : 1.1;
           const growth = 1 + (1 - lifeRatio) * growthBase;
           p.radius = p.radiusStart * growth;
-          const buoyancy = p.source === 'wreck' ? -g * 0.28 : g * 0.07;
+          const buoyancy = isWreck ? -g * 0.28 : isMeteor ? -g * 0.09 : g * 0.07;
           p.vy += buoyancy * dt;
-          if (p.source === 'wreck') {
+          if (isWreck) {
             if (p.vy > -0.008) p.vy = -0.008;
             if (p.vy < -0.08) p.vy = -0.08;
             p.vx *= 0.9985;
+          } else if (isMeteor) {
+            if (p.vy < -0.06) p.vy = -0.06;
+            if (p.vy > 0.03) p.vy = 0.03;
+            p.vx *= 0.996;
           } else {
             if (p.vy < -0.035) p.vy = -0.035;
             p.vx *= 0.997;
           }
           const smokePull = computeBlackHoleAcceleration(p.x, p.y);
           if (smokePull) {
-            const pullScale = p.source === 'void' ? 2.0 : 0.8;
+            const pullScale = source === 'void' ? 2.0 : isMeteor ? 0.6 : 0.8;
             p.vx += smokePull.ax * dt * pullScale;
             p.vy += smokePull.ay * dt * pullScale;
           }
           p.x += p.vx * dt;
           p.y += p.vy * dt;
-          if (p.source === 'void') {
+          if (source === 'void') {
             const capture = findBlackHoleCapture(p.x, p.y);
             if (capture) {
               p.life = 0;
@@ -1938,8 +2287,13 @@ let camY = null;
           const gy = groundYAt(p.x, p.y);
           if (p.y + p.radius >= gy) {
             p.y = gy - p.radius;
-            p.vy *= -0.1;
-            p.vx *= 0.88;
+            if (isMeteor) {
+              p.vy *= -0.2;
+              p.vx *= 0.85;
+            } else {
+              p.vy *= -0.1;
+              p.vx *= 0.88;
+            }
           }
         }
         blastSmoke = blastSmoke.filter(p => p.life > 0 && p.radius > 0.5);
@@ -2010,15 +2364,29 @@ let camY = null;
         for (const p of blastSmoke) {
           if (p.life <= 0) continue;
           const lifeRatio = clamp01(p.life / p.lifeStart);
-          const expo = p.source === 'wreck' ? 0.58 : 0.75;
+          const source = p.source || 'blast';
+          const isWreck = source === 'wreck';
+          const isMeteor = source === 'meteor';
+          const expo = isWreck ? 0.58 : isMeteor ? 0.7 : 0.75;
           const heat = Math.pow(lifeRatio, expo);
-          const r = Math.max(0, Math.min(255, Math.round(118 * heat * p.heat)));
-          const g = Math.max(0, Math.min(255, Math.round(48 * heat * (p.source === 'wreck' ? 0.9 : 0.7))));
-          const b = Math.max(0, Math.min(255, Math.round(44 * heat * (p.source === 'wreck' ? 0.75 : 0.6))));
-          const alphaBase = p.source === 'wreck' ? 0.32 : 0.28;
+          let r, g, b;
+          if (isWreck) {
+            r = Math.max(0, Math.min(255, Math.round(118 * heat * p.heat)));
+            g = Math.max(0, Math.min(255, Math.round(48 * heat * 0.9)));
+            b = Math.max(0, Math.min(255, Math.round(44 * heat * 0.75)));
+          } else if (isMeteor) {
+            r = Math.max(0, Math.min(255, Math.round(160 * heat * p.heat)));
+            g = Math.max(0, Math.min(255, Math.round(120 * heat * 0.85)));
+            b = Math.max(0, Math.min(255, Math.round(95 * heat * 0.7)));
+          } else {
+            r = Math.max(0, Math.min(255, Math.round(118 * heat * p.heat)));
+            g = Math.max(0, Math.min(255, Math.round(48 * heat * 0.7)));
+            b = Math.max(0, Math.min(255, Math.round(44 * heat * 0.6)));
+          }
+          const alphaBase = isWreck ? 0.32 : isMeteor ? 0.34 : 0.28;
           const centerAlpha = Math.min(0.88, alphaBase + 0.72 * Math.pow(lifeRatio, 0.5) * p.heat);
           const midAlpha = centerAlpha * 0.68;
-          const radius = p.radius * (1.0 + (1 - lifeRatio) * (p.source === 'wreck' ? 0.55 : 0.42));
+          const radius = p.radius * (1.0 + (1 - lifeRatio) * (isWreck ? 0.55 : isMeteor ? 0.62 : 0.42));
           const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius);
           gradient.addColorStop(0, `rgba(${r},${g},${b},${centerAlpha})`);
           gradient.addColorStop(0.45, `rgba(${r},${g},${b},${midAlpha})`);
@@ -2220,6 +2588,328 @@ let camY = null;
         if (dx * dx + dy * dy <= EXPLOSION_KILL_RADIUS * EXPLOSION_KILL_RADIUS) {
           spawnExplosion(lander.x, lander.y, lander.vx, lander.vy);
         }
+      }
+
+      function normalizeMeteorDef(def, index = 0) {
+        if (!def) return null;
+        const spawnX = clamp(def.spawn?.x ?? terrain.width / 2, 0, terrain.width);
+        const spawnYRaw = def.spawn?.y ?? -120;
+        const spawnY = Math.max(-terrain.height * 1.5, Math.min(terrain.height + 600, spawnYRaw));
+        const targetX = clamp(def.target?.x ?? spawnX, 0, terrain.width);
+        const targetYRaw = def.target?.y ?? terrain.height * 0.9;
+        const targetY = Math.max(-400, Math.min(terrain.height + 600, targetYRaw));
+        const radius = Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, def.radius ?? 24));
+        const speed = Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, def.speed ?? 0.32));
+        const startMs = Math.max(0, def.startMs ?? 0);
+        const warningLeadMs = Math.min(startMs, Math.max(0, def.warningLeadMs ?? 0));
+        return {
+          id: def.id || `meteor-${Date.now()}-${index}`,
+          spawn: { x: spawnX, y: spawnY },
+          target: { x: targetX, y: targetY },
+          radius,
+          speed,
+          startMs,
+          warningLeadMs,
+          warningStart: Math.max(0, startMs - warningLeadMs),
+          warningIssued: false,
+        };
+      }
+
+      function prepareMeteorTimeline(source) {
+        if (!source || !source.length) return [];
+        return source
+          .map((def, index) => normalizeMeteorDef(def, index))
+          .filter(Boolean)
+          .sort((a, b) => a.startMs - b.startMs);
+      }
+
+      function resetMeteorState() {
+        meteorTime = 0;
+        meteorWarnings = [];
+        activeMeteors = [];
+        meteorTimeline = prepareMeteorTimeline(terrain.meteors);
+      }
+
+      function spawnMeteorWarning(event) {
+        if (event.warningLeadMs <= 0) {
+          event.warningIssued = true;
+          return;
+        }
+        meteorWarnings.push({
+          id: event.id,
+          spawn: { ...event.spawn },
+          target: { ...event.target },
+          radius: event.radius,
+          start: event.warningStart,
+          end: event.startMs,
+          flash: 0,
+        });
+        if (event.warningLeadMs > 0 && audio && typeof audio.playMeteorWarning === 'function') {
+          audio.playMeteorWarning();
+        }
+        event.warningIssued = true;
+      }
+
+      function spawnMeteor(event) {
+        const dx = event.target.x - event.spawn.x;
+        const dy = event.target.y - event.spawn.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const dirX = dx / dist;
+        const dirY = dy / dist;
+        const meteor = {
+          id: event.id,
+          x: event.spawn.x,
+          y: event.spawn.y,
+          vx: dirX * event.speed,
+          vy: dirY * event.speed,
+          radius: event.radius,
+          angle: Math.atan2(dirY, dirX),
+          spin: (Math.random() - 0.5) * 0.0045,
+          trailTimer: 0,
+          exploded: false,
+          target: { ...event.target },
+        };
+        activeMeteors.push(meteor);
+        meteorWarnings = meteorWarnings.filter(w => w.id !== event.id);
+      }
+
+      function spawnMeteorTrail(meteor) {
+        const radius = meteor.radius * (0.45 + Math.random() * 0.25);
+        const life = 720 + Math.random() * 380;
+        blastSmoke.push({
+          x: meteor.x - meteor.vx * 16 + (Math.random() - 0.5) * meteor.radius * 0.6,
+          y: meteor.y - meteor.vy * 16 + (Math.random() - 0.5) * meteor.radius * 0.6,
+          vx: -meteor.vx * 0.18 + (Math.random() - 0.5) * 0.08,
+          vy: -meteor.vy * 0.18 + (Math.random() - 0.5) * 0.08,
+          radius,
+          radiusStart: radius,
+          life,
+          lifeStart: life,
+          heat: 0.82 + Math.random() * 0.3,
+          source: 'meteor',
+        });
+        const emberRadius = 3 + Math.random() * 3;
+        const emberLife = 420 + Math.random() * 360;
+        debris.push({
+          x: meteor.x,
+          y: meteor.y,
+          vx: -meteor.vx * 0.12 + (Math.random() - 0.5) * 0.22,
+          vy: -meteor.vy * 0.12 + (Math.random() - 0.5) * 0.22,
+          radius: emberRadius,
+          radiusStart: emberRadius,
+          life: emberLife,
+          lifeStart: emberLife,
+          glowBias: 0.95 + Math.random() * 0.35,
+          kind: 'ember',
+        });
+      }
+
+      function resolveMeteorImpact(meteor, hitX, hitY) {
+        if (!meteor || meteor.exploded) return;
+        meteor.exploded = true;
+        const impactX = clamp(hitX, 0, terrain.width);
+        const groundY = groundYAt(impactX, hitY);
+        const craterRadius = Math.max(meteor.radius * 1.2, Math.min(METEOR_MAX_RADIUS * 1.6, meteor.radius * METEOR_CRATER_RADIUS_SCALE));
+        const craterDepth = Math.max(meteor.radius * 0.6, meteor.radius * METEOR_CRATER_DEPTH_SCALE);
+        deformTerrainAt(impactX, groundY, craterRadius, craterDepth);
+        const dustCount = 36 + Math.round(meteor.radius * 0.8);
+        for (let i = 0; i < dustCount; i++) {
+          const spread = (Math.random() - 0.5) * craterRadius * 1.2;
+          const spawnX = clamp(impactX + spread, 0, terrain.width);
+          const baseY = groundYAt(spawnX, groundY);
+          const radius = craterRadius * (0.25 + Math.random() * 0.35);
+          const life = 2400 + Math.random() * 1600;
+          blastSmoke.push({
+            x: spawnX,
+            y: baseY - radius * (0.55 + Math.random() * 0.2),
+            vx: (spawnX - impactX) * 0.0008 + (Math.random() - 0.5) * 0.12,
+            vy: -0.05 - Math.random() * 0.05,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            heat: 0.55 + Math.random() * 0.25,
+            source: 'meteor',
+          });
+        }
+        for (let i = 0; i < METEOR_SPARK_COUNT; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.18 + Math.random() * 0.22;
+          const radius = 6 + Math.random() * 4;
+          const life = 900 + Math.random() * 600;
+          debris.push({
+            x: impactX,
+            y: groundY - radius * 0.4,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 0.08,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 1.1 + Math.random() * 0.4,
+            kind: 'shard',
+          });
+        }
+        meteorWarnings = meteorWarnings.filter(w => w.id !== meteor.id);
+        if (audio && typeof audio.playMeteorImpact === 'function') {
+          audio.playMeteorImpact();
+        }
+        applyExplosionEffects(impactX, groundY);
+      }
+
+      function updateMeteors(dt) {
+        meteorTime += dt;
+        if (meteorTimeline.length) {
+          const remaining = [];
+          for (const event of meteorTimeline) {
+            if (!event.warningIssued && meteorTime >= event.warningStart) {
+              spawnMeteorWarning(event);
+            }
+            if (meteorTime >= event.startMs) {
+              spawnMeteor(event);
+              continue;
+            }
+            remaining.push(event);
+          }
+          meteorTimeline = remaining;
+        }
+
+        if (meteorWarnings.length) {
+          for (const warn of meteorWarnings) {
+            warn.flash = (warn.flash || 0) + dt;
+            warn.progress = warn.end > warn.start ? clamp01((meteorTime - warn.start) / (warn.end - warn.start)) : 1;
+          }
+          meteorWarnings = meteorWarnings.filter(warn => meteorTime < warn.end);
+        }
+
+        if (!activeMeteors.length) {
+          return;
+        }
+        const remainingMeteors = [];
+        for (const meteor of activeMeteors) {
+          if (meteor.exploded) {
+            continue;
+          }
+          meteor.vy += g * dt * METEOR_GRAVITY_SCALE;
+          meteor.x += meteor.vx * dt;
+          meteor.y += meteor.vy * dt;
+          meteor.angle += meteor.spin * dt;
+          meteor.trailTimer += dt;
+          while (meteor.trailTimer >= METEOR_TRAIL_INTERVAL) {
+            spawnMeteorTrail(meteor);
+            meteor.trailTimer -= METEOR_TRAIL_INTERVAL;
+          }
+
+          let meteorRemoved = false;
+          if (!exploded && !gameOver) {
+            const hullRadius = Math.max(lander.width, lander.height) * 0.35;
+            const dx = lander.x - meteor.x;
+            const dy = lander.y - meteor.y;
+            const killRadius = (meteor.radius + hullRadius);
+            if (dx * dx + dy * dy <= killRadius * killRadius) {
+              resolveMeteorImpact(meteor, meteor.x, meteor.y);
+              meteorRemoved = true;
+            }
+          }
+
+          if (!meteorRemoved && bombs.length) {
+            for (const bomb of bombs) {
+              if (!bomb || bomb.detonated) continue;
+              if (bomb.armingMs > 0) continue;
+              const dx = bomb.x - meteor.x;
+              const dy = bomb.y - meteor.y;
+              const distSq = dx * dx + dy * dy;
+              const limit = (meteor.radius + bomb.radius) * (meteor.radius + bomb.radius);
+              if (distSq <= limit) {
+                resolveMeteorImpact(meteor, meteor.x, meteor.y);
+                explodeBomb(bomb);
+                meteorRemoved = true;
+                break;
+              }
+            }
+          }
+
+          const groundY = groundYAt(meteor.x, meteor.y);
+          if (!meteorRemoved && meteor.y + meteor.radius >= groundY) {
+            resolveMeteorImpact(meteor, meteor.x, groundY);
+            meteorRemoved = true;
+          }
+
+          if (!meteorRemoved && (meteor.x < -meteor.radius || meteor.x > terrain.width + meteor.radius || meteor.y > terrain.height + meteor.radius * 3)) {
+            meteorRemoved = true;
+          }
+
+          if (!meteorRemoved) {
+            remainingMeteors.push(meteor);
+          }
+        }
+        activeMeteors = remainingMeteors;
+      }
+
+      function drawMeteorWarnings() {
+        if (!meteorWarnings.length) return;
+        ctx.save();
+        ctx.lineWidth = 2;
+        for (const warn of meteorWarnings) {
+          const phase = (warn.flash % METEOR_WARNING_FLASH_MS) / METEOR_WARNING_FLASH_MS;
+          const pulse = Math.sin(phase * Math.PI * 2) * 0.5 + 0.5;
+          const alpha = METEOR_WARNING_ALPHA_MIN + (METEOR_WARNING_ALPHA_MAX - METEOR_WARNING_ALPHA_MIN) * pulse;
+          ctx.strokeStyle = `rgba(255, 200, 120, ${alpha.toFixed(3)})`;
+          ctx.setLineDash([10, 8]);
+          ctx.beginPath();
+          ctx.moveTo(warn.spawn.x, warn.spawn.y);
+          ctx.lineTo(warn.target.x, warn.target.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          const samples = 3;
+          for (let i = 0; i <= samples; i++) {
+            const t = i / samples;
+            const px = warn.spawn.x + (warn.target.x - warn.spawn.x) * t;
+            const py = warn.spawn.y + (warn.target.y - warn.spawn.y) * t;
+            const r = warn.radius * (0.9 - 0.4 * Math.abs(0.5 - t));
+            ctx.beginPath();
+            ctx.arc(px, py, Math.max(4, r), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      }
+
+      function drawMeteors() {
+        if (!activeMeteors.length) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const meteor of activeMeteors) {
+          ctx.save();
+          ctx.translate(meteor.x, meteor.y);
+          ctx.rotate(meteor.angle);
+          const coreRadius = meteor.radius * 0.6;
+          const tailLength = meteor.radius * 3.2;
+          const gradient = ctx.createLinearGradient(-tailLength, 0, coreRadius, 0);
+          gradient.addColorStop(0, 'rgba(80, 40, 10, 0)');
+          gradient.addColorStop(0.35, 'rgba(255, 110, 40, 0.35)');
+          gradient.addColorStop(0.75, 'rgba(255, 200, 100, 0.8)');
+          gradient.addColorStop(1, 'rgba(255, 240, 190, 0.95)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.moveTo(-tailLength, -coreRadius * 0.6);
+          ctx.quadraticCurveTo(-coreRadius * 0.3, -coreRadius * 0.9, coreRadius, -coreRadius * 0.2);
+          ctx.lineTo(coreRadius, coreRadius * 0.2);
+          ctx.quadraticCurveTo(-coreRadius * 0.3, coreRadius * 0.9, -tailLength, coreRadius * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          ctx.beginPath();
+          ctx.fillStyle = 'rgba(255, 240, 210, 0.9)';
+          ctx.arc(meteor.x, meteor.y, coreRadius * 0.75, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.fillStyle = 'rgba(255, 140, 60, 0.7)';
+          ctx.arc(meteor.x, meteor.y, coreRadius * 1.05, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
 
       function applyExplosionEffects(x, y, sourceBomb = null) {
@@ -2676,6 +3366,53 @@ let camY = null;
           ctx.restore();
         }
 
+        const meteors = ensureEditorMeteors();
+        if (meteors.length || editorState.pendingMeteor) {
+          ctx.save();
+          ctx.setLineDash([8, 8]);
+          for (let i = 0; i < meteors.length; i++) {
+            const meteor = meteors[i];
+            const isSelected = i === editorState.selectedMeteor;
+            const color = isSelected ? 'rgba(255, 214, 102, 0.95)' : 'rgba(255, 140, 66, 0.85)';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = isSelected ? 3 : 2;
+            ctx.beginPath();
+            ctx.moveTo(meteor.spawn.x, meteor.spawn.y);
+            ctx.lineTo(meteor.target.x, meteor.target.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.arc(meteor.spawn.x, meteor.spawn.y, meteor.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(meteor.target.x, meteor.target.y, Math.max(6, meteor.radius * 0.6), 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = color;
+            ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+            const label = `t=${(meteor.startMs/1000).toFixed(1)}s  warn=${(meteor.warningLeadMs/1000).toFixed(1)}s  v=${meteor.speed.toFixed(2)}`;
+            ctx.fillText(label, meteor.spawn.x + 12, meteor.spawn.y - 12);
+            ctx.setLineDash([8, 8]);
+          }
+          if (editorState.pendingMeteor) {
+            const pending = editorState.pendingMeteor;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(pending.spawn.x, pending.spawn.y);
+            ctx.lineTo(pending.target.x, pending.target.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.arc(pending.spawn.x, pending.spawn.y, pending.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(pending.target.x, pending.target.y, Math.max(6, pending.radius * 0.6), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
         ctx.textAlign = 'left';
         const cursor = editorState.cursorWorld;
         if (cursor) {
@@ -2779,6 +3516,7 @@ let camY = null;
         updateWreckFlames(dt);
         updateBlastSmoke(dt);
         updateWinFx(dt);
+        updateMeteors(dt);
         updateSmoke(dt);
         updateBombs(dt);
         if (padFlash > 0) padFlash -= dt;
@@ -3022,6 +3760,8 @@ let camY = null;
           drawTerrain();
           drawBlackHoles(isGameplay ? activeBlackHoles : terrain.blackHoles);
           if (isGameplay) {
+            drawMeteorWarnings();
+            drawMeteors();
             drawBombs();
             drawSmoke();
             drawBlastSmoke();

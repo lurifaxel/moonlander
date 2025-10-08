@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added oversized "Awesome Levels" with pronounced peaks, valleys, and hidden landing pads that require exploration between attempts.
 - Start menu with a custom level editor: sculpt (or Alt-carve) voxel terrain, place spawn/landing zones, and press R to flight-test creations—including pads tucked inside caverns—before returning to editing.
 - Black hole hazards that can be placed in the editor; they render as pixelated singularities, pull ships/bombs/debris, and consume the lander without triggering bomb explosions.
+- Meteor showers that telegraph their path, blast fiery trails, deform the terrain on impact, and can be configured per-level (including timing, speed, angle, and size) directly from the editor.
 
 ### Fixed
 
