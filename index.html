@@ -183,6 +183,7 @@
         height: height,
         levelName: levels[0].name,
         dirtyRender: true,
+        blackHoles: [],
       };
       const pad = { x: 0, y: 0, w: 110, h: 10 };
       const PAD_PULSE_PERIOD = 3000; // ms for a full pad glow cycle
@@ -199,13 +200,28 @@
       const EXPLOSION_KILL_RADIUS = 74; // px radius that destroys the lander from a blast
       const CRASH_CRATER_RADIUS = 78; // px terrain deformation from crashing
       const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
+
+      const BLACK_HOLE_EVENT_RADIUS = 42;     // px radius where objects are consumed
+      const BLACK_HOLE_PULL_RADIUS = 220;     // px radius where gravity begins to pull
+      const BLACK_HOLE_PULL_STRENGTH = 0.0014; // base acceleration gain (px/ms^2)
+      const BLACK_HOLE_MAX_FORCE = 0.0025;     // clamp for stability
+      const BLACK_HOLE_MIN_DISTANCE = 18;      // avoid infinite acceleration near center
+      const BLACK_HOLE_MIN_SPACING = BLACK_HOLE_EVENT_RADIUS * 2.1; // spacing between holes
+
+      function holeEventRadius(hole) {
+        return hole && typeof hole.eventRadius === 'number' ? hole.eventRadius : BLACK_HOLE_EVENT_RADIUS;
+      }
+
+      function holePullRadius(hole) {
+        return hole && typeof hole.pullRadius === 'number' ? hole.pullRadius : BLACK_HOLE_PULL_RADIUS;
+      }
       const DEBRIS_GRAVITY_MULT = 3;  // tweak to make explosion debris fall faster/slower
       const DEBRIS_LIFE_MULT = 3;   // tweak to make explosion debris linger longer/shorter
 
       const editorState = {
         active: false,
         grid: null,
-        placementOptions: ['spawn', 'landing'],
+        placementOptions: ['spawn', 'landing', 'blackHole'],
         placementIndex: 0,
         spawn: { x: 180, y: 120 },
         isPainting: false,
@@ -218,6 +234,7 @@
         camX: null,
         camY: null,
         testBaseline: null,
+        blackHoles: [],
       };
 
       function cloneSolidsArray(source) {
@@ -226,16 +243,31 @@
         return copy;
       }
 
+      function cloneBlackHoles(source) {
+        if (!source || !source.length) return [];
+        return source.map(hole => ({
+          x: hole.x,
+          y: hole.y,
+          eventRadius: hole.eventRadius ?? BLACK_HOLE_EVENT_RADIUS,
+          pullRadius: hole.pullRadius ?? BLACK_HOLE_PULL_RADIUS,
+        }));
+      }
+
       function restoreTerrainFromBaseline() {
-        if (!editorState.testBaseline) return;
         const baseline = editorState.testBaseline;
-        if (terrain.solids.length !== baseline.length) {
-          terrain.solids = new Uint8Array(baseline.length);
+        if (!baseline) return;
+        const solidSnapshot = baseline.solids ? baseline.solids : baseline;
+        if (terrain.solids.length !== solidSnapshot.length) {
+          terrain.solids = new Uint8Array(solidSnapshot.length);
         }
-        terrain.solids.set(baseline);
+        terrain.solids.set(solidSnapshot);
         terrain.dirtyRender = true;
+        const baselineHoles = baseline.blackHoles ? baseline.blackHoles : [];
+        terrain.blackHoles = cloneBlackHoles(baselineHoles);
+        editorState.blackHoles = terrain.blackHoles;
         if (editorState.grid) {
           editorState.grid.solids = terrain.solids;
+          editorState.grid.blackHoles = terrain.blackHoles;
         }
       }
 
@@ -249,6 +281,9 @@
         terrain.height = rows * cellSize;
         terrain.solids = new Uint8Array(cols * rows);
         terrain.dirtyRender = true;
+        if (!Array.isArray(terrain.blackHoles)) {
+          terrain.blackHoles = [];
+        }
       }
 
       function fillColumnSolid(col, fromRow) {
@@ -264,6 +299,7 @@
         const level = levels[currentLevelIndex];
         terrain.levelName = level.name;
         initTerrainGrid(level.worldWidth);
+        terrain.blackHoles = [];
 
         const step = terrain.cellSize;
         const cols = terrain.cols;
@@ -468,6 +504,8 @@
             rows: terrain.rows,
             solids: terrain.solids,
           };
+          editorState.blackHoles = [];
+          terrain.blackHoles = editorState.blackHoles;
           editorState.spawn.x = Math.min(worldWidth * 0.18, worldWidth - 200);
           const spawnSurface = findSurfaceBelow(editorState.spawn.x, height * 0.6);
           editorState.spawn.y = (spawnSurface ? spawnSurface.y : height * 0.75) - 140;
@@ -481,6 +519,10 @@
           initTerrainGrid(editorState.grid.cols * editorState.grid.cellSize);
           terrain.solids.set(editorState.grid.solids);
           editorState.grid.solids = terrain.solids;
+          if (editorState.grid.blackHoles) {
+            editorState.blackHoles = cloneBlackHoles(editorState.grid.blackHoles);
+          }
+          terrain.blackHoles = editorState.blackHoles;
         }
         editorState.active = true;
         editorState.brushRadius = editorState.brushRadius || 26;
@@ -497,6 +539,7 @@
           cols: terrain.cols,
           rows: terrain.rows,
           solids: terrain.solids,
+          blackHoles: editorState.blackHoles,
         };
         editorState.testBaseline = null;
       }
@@ -535,6 +578,90 @@
         } else {
           alignPadToSurface(x, y);
         }
+      }
+
+      function ensureEditorBlackHoles() {
+        if (!Array.isArray(editorState.blackHoles)) {
+          editorState.blackHoles = [];
+        }
+        if (terrain.blackHoles !== editorState.blackHoles) {
+          terrain.blackHoles = editorState.blackHoles;
+        }
+        return editorState.blackHoles;
+      }
+
+      function findBlackHoleNear(x, y, radiusMultiplier = 1.1) {
+        const holes = ensureEditorBlackHoles();
+        if (!holes.length) return null;
+        const radius = BLACK_HOLE_EVENT_RADIUS * radiusMultiplier;
+        let closest = null;
+        let bestDist = Infinity;
+        for (const hole of holes) {
+          const dx = hole.x - x;
+          const dy = hole.y - y;
+          const dist = Math.hypot(dx, dy);
+          if (dist <= radius && dist < bestDist) {
+            closest = hole;
+            bestDist = dist;
+          }
+        }
+        return closest;
+      }
+
+      function editorPlaceBlackHole(x, y) {
+        const holes = ensureEditorBlackHoles();
+        const margin = BLACK_HOLE_EVENT_RADIUS + terrain.cellSize;
+        let px = clamp(x, margin, Math.max(margin, terrain.width - margin));
+        let py = clamp(y, margin, Math.max(margin, terrain.height - margin));
+        const penetration = resolvePenetrationAt(px, py);
+        if (penetration.depth > 0.5) {
+          px += penetration.normal.x * (penetration.depth + terrain.cellSize * 0.5);
+          py += penetration.normal.y * (penetration.depth + terrain.cellSize * 0.5);
+          px = clamp(px, margin, Math.max(margin, terrain.width - margin));
+          py = clamp(py, margin, Math.max(margin, terrain.height - margin));
+        }
+        if (isSolidWorld(px, py)) {
+          return false;
+        }
+        for (const existing of holes) {
+          const dist = Math.hypot(existing.x - px, existing.y - py);
+          if (dist < BLACK_HOLE_MIN_SPACING) {
+            return false;
+          }
+        }
+        const hole = {
+          x: px,
+          y: py,
+          eventRadius: BLACK_HOLE_EVENT_RADIUS,
+          pullRadius: BLACK_HOLE_PULL_RADIUS,
+        };
+        holes.push(hole);
+        terrain.blackHoles = holes;
+        editorState.blackHoles = holes;
+        terrain.dirtyRender = true;
+        return true;
+      }
+
+      function editorRemoveBlackHole(x, y) {
+        const holes = ensureEditorBlackHoles();
+        if (!holes.length) return false;
+        const radius = BLACK_HOLE_EVENT_RADIUS * 1.4;
+        let index = -1;
+        let bestDist = Infinity;
+        for (let i = 0; i < holes.length; i++) {
+          const hole = holes[i];
+          const dist = Math.hypot(hole.x - x, hole.y - y);
+          if (dist <= radius && dist < bestDist) {
+            index = i;
+            bestDist = dist;
+          }
+        }
+        if (index === -1) return false;
+        holes.splice(index, 1);
+        terrain.blackHoles = holes;
+        editorState.blackHoles = holes;
+        terrain.dirtyRender = true;
+        return true;
       }
 
       function editorApplyBrush(x, y, mode) {
@@ -583,6 +710,7 @@
         switch (key) {
           case 'spawn': return 'Spawn point';
           case 'landing': return 'Landing zone';
+          case 'blackHole': return 'Black hole';
           default: return key;
         }
       }
@@ -654,6 +782,8 @@ let blastSmoke = []; // post-explosion embers smoke
 let wreckFlames = []; // persistent burning wreckage
 let bombs = []; // active bombs dropped by the lander
 let bombCooldown = 0; // ms remaining until next bomb can be dropped
+let activeBlackHoles = [];
+let blackHolePhase = 0;
 
 let camX = null;
 let camY = null;
@@ -1013,11 +1143,15 @@ let camY = null;
         if (appMode === APP_MODE.EDITOR) {
           editorPanel.classList.remove('hidden');
           const option = editorState.placementOptions[editorState.placementIndex];
+          const placementLabel = labelForPlacement(option);
+          const clickInstruction = option === 'blackHole'
+            ? 'Click: place black hole (Alt + click removes one)'
+            : `Click: place ${placementLabel}`;
           updateEditorPanel([
             '<strong>Level Editor</strong>',
             'Left drag: add terrain (hold Alt to carve)',
-            `Mouse wheel: select ${labelForPlacement(option)}`,
-            `Click: place ${labelForPlacement(option)}`,
+            `Mouse wheel: select ${placementLabel}`,
+            clickInstruction,
             'R: test this level',
             'Esc: back to menu',
           ]);
@@ -1087,9 +1221,18 @@ let camY = null;
         if (startingFromEditor) {
           editorState.camX = camX;
           editorState.camY = camY;
-          editorState.testBaseline = cloneSolidsArray(terrain.solids);
+          editorState.testBaseline = {
+            solids: cloneSolidsArray(terrain.solids),
+            blackHoles: cloneBlackHoles(terrain.blackHoles),
+          };
         } else if (editorState.testBaseline) {
-          terrain.solids.set(editorState.testBaseline);
+          const solidSnapshot = editorState.testBaseline.solids || editorState.testBaseline;
+          if (solidSnapshot.length !== terrain.solids.length) {
+            terrain.solids = new Uint8Array(solidSnapshot.length);
+          }
+          terrain.solids.set(solidSnapshot);
+          terrain.blackHoles = cloneBlackHoles(editorState.testBaseline.blackHoles);
+          editorState.blackHoles = terrain.blackHoles;
         }
         appMode = APP_MODE.TEST;
         startMenu.classList.add('hidden');
@@ -1107,7 +1250,9 @@ let camY = null;
       function returnToEditorFromTest() {
         if (editorState.testBaseline) {
           editorState.grid = editorState.grid || {};
-          editorState.grid.solids = cloneSolidsArray(editorState.testBaseline);
+          const solidSnapshot = editorState.testBaseline.solids || editorState.testBaseline;
+          editorState.grid.solids = cloneSolidsArray(solidSnapshot);
+          editorState.grid.blackHoles = cloneBlackHoles(editorState.testBaseline.blackHoles);
         }
         enterEditor(false);
         editorState.testBaseline = null;
@@ -1228,10 +1373,23 @@ let camY = null;
         if (appMode !== APP_MODE.EDITOR) return;
         if (e.button !== 0) return;
         const world = screenToWorld(e.offsetX, e.offsetY);
+        const option = editorState.placementOptions[editorState.placementIndex];
+        editorState.cursorWorld = { ...world };
+        if (option === 'blackHole') {
+          if (e.altKey) {
+            editorRemoveBlackHole(world.x, world.y);
+          } else {
+            editorPlaceBlackHole(world.x, world.y);
+          }
+          editorState.isPainting = false;
+          editorState.hasMoved = false;
+          editorState.pendingPaintStart = null;
+          editorState.lastPointer = null;
+          return;
+        }
         editorState.isPainting = true;
         editorState.hasMoved = false;
         editorState.lastPointer = { ...world };
-        editorState.cursorWorld = { ...world };
         editorState.pendingPaintStart = { ...world };
         editorState.activeBrushMode = e.altKey ? 'carve' : 'add';
       });
@@ -1268,8 +1426,9 @@ let camY = null;
         editorState.hasMoved = false;
         editorState.pendingPaintStart = null;
         editorState.lastPointer = null;
+        const option = editorState.placementOptions[editorState.placementIndex];
+        if (option === 'blackHole') return;
         if (!moved) {
-          const option = editorState.placementOptions[editorState.placementIndex];
           if (option === 'spawn') {
             editorPlaceSpawn(world.x, world.y);
           } else if (option === 'landing') {
@@ -1339,6 +1498,8 @@ let camY = null;
         wreckFlames = [];
         bombs = [];
         bombCooldown = 0;
+        activeBlackHoles = cloneBlackHoles(terrain.blackHoles);
+        blackHolePhase = 0;
         audio.reset();
         const camSourceX = camera && camera.x != null ? camera.x : lander.x;
         const camSourceY = camera && camera.y != null ? camera.y : lander.y;
@@ -1485,6 +1646,135 @@ let camY = null;
         applyExplosionEffects(x, craterFloorY);
       }
 
+      function consumeLanderIntoBlackHole(hole) {
+        if (!hole || gameOver) return;
+        gameOver = true;
+        exploded = true;
+        landed = false;
+        shouldRegen = false;
+        const testMode = appMode === APP_MODE.TEST;
+        message = testMode
+          ? 'Singularity capture! Press R to retry or Esc to edit'
+          : 'Singularity capture! Press R to restart';
+        audio.stopThrusterImmediate();
+        audio.setThrusterActive(false);
+        audio.playDeathTone();
+        const startX = lander.x;
+        const startY = lander.y;
+        lander.x = hole.x;
+        lander.y = hole.y;
+        lander.vx = 0;
+        lander.vy = 0;
+        lander.angularVelocity = 0;
+        debris = [];
+        smoke = [];
+        winFx = [];
+        wreckFlames = [];
+        padFlash = 0;
+        blastSmoke = [];
+        bombCooldown = 0;
+        const shards = 36 + (Math.random() * 18 | 0);
+        for (let i = 0; i < shards; i++) {
+          const angle = (i / shards) * Math.PI * 2 + Math.random() * 0.35;
+          const ring = 22 + Math.random() * 32;
+          const spawnX = startX + Math.cos(angle) * ring;
+          const spawnY = startY + Math.sin(angle) * ring;
+          const dirX = hole.x - spawnX;
+          const dirY = hole.y - spawnY;
+          const mag = Math.hypot(dirX, dirY) || 1;
+          const nx = dirX / mag;
+          const ny = dirY / mag;
+          const inwardSpeed = 0.18 + Math.random() * 0.3;
+          const swirl = (Math.random() - 0.5) * 0.22;
+          const tangentAngle = angle + Math.PI / 2;
+          const vx = nx * inwardSpeed + Math.cos(tangentAngle) * swirl;
+          const vy = ny * inwardSpeed + Math.sin(tangentAngle) * swirl;
+          const radius = 8 + Math.random() * 10;
+          const life = 1400 + Math.random() * 900;
+          debris.push({
+            x: spawnX,
+            y: spawnY,
+            vx,
+            vy,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            glowBias: 0.9 + Math.random() * 0.4,
+            kind: i % 4 === 0 ? 'core' : 'shard',
+          });
+        }
+
+        const wisps = 18 + (Math.random() * 10 | 0);
+        const eventRadius = holeEventRadius(hole);
+        for (let i = 0; i < wisps; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const radius = eventRadius * (0.6 + Math.random() * 0.5);
+          const px = hole.x + Math.cos(theta) * radius;
+          const py = hole.y + Math.sin(theta) * radius;
+          const dirX = hole.x - px;
+          const dirY = hole.y - py;
+          const mag = Math.hypot(dirX, dirY) || 1;
+          const nx = dirX / mag;
+          const ny = dirY / mag;
+          const speed = 0.05 + Math.random() * 0.08;
+          const swirl = (Math.random() - 0.5) * 0.04;
+          const wRadius = 12 + Math.random() * 12;
+          const wLife = 1600 + Math.random() * 900;
+          blastSmoke.push({
+            x: px,
+            y: py,
+            vx: nx * speed + Math.cos(theta + Math.PI / 2) * swirl,
+            vy: ny * speed + Math.sin(theta + Math.PI / 2) * swirl,
+            radius: wRadius,
+            radiusStart: wRadius,
+            life: wLife,
+            lifeStart: wLife,
+            heat: 0.6 + Math.random() * 0.3,
+            source: 'void',
+          });
+        }
+
+        bombs = bombs.filter(b => !isInsideBlackHole(hole, b.x, b.y));
+        blastSmoke = blastSmoke.filter(p => !isNaN(p.x));
+      }
+
+      function absorbBombIntoBlackHole(bomb, hole) {
+        if (!bomb || bomb.detonated) return;
+        bomb.detonated = true;
+        bomb.fuseMs = 0;
+        bomb.absorbed = true;
+        const sparks = 10 + (Math.random() * 8 | 0);
+        const pullRadius = holeEventRadius(hole) * 0.9;
+        for (let i = 0; i < sparks; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const radius = pullRadius * (0.4 + Math.random() * 0.5);
+          const px = hole.x + Math.cos(theta) * radius;
+          const py = hole.y + Math.sin(theta) * radius;
+          const dirX = hole.x - px;
+          const dirY = hole.y - py;
+          const mag = Math.hypot(dirX, dirY) || 1;
+          const nx = dirX / mag;
+          const ny = dirY / mag;
+          const speed = 0.12 + Math.random() * 0.16;
+          const swirl = (Math.random() - 0.5) * 0.06;
+          const emberRadius = 4 + Math.random() * 4;
+          const emberLife = 900 + Math.random() * 600;
+          debris.push({
+            x: px,
+            y: py,
+            vx: nx * speed + Math.cos(theta + Math.PI / 2) * swirl,
+            vy: ny * speed + Math.sin(theta + Math.PI / 2) * swirl,
+            radius: emberRadius,
+            radiusStart: emberRadius,
+            life: emberLife,
+            lifeStart: emberLife,
+            glowBias: 0.7 + Math.random() * 0.4,
+            kind: 'ember',
+          });
+        }
+      }
+
       function updateDebris(dt) {
         const BOUNCE = tune.bounce;
         const FRIC = tune.friction;
@@ -1512,34 +1802,56 @@ let camY = null;
           // physics
           const driftDamp = p.kind === 'ember' ? 0.993 : 0.997;
           p.vy += g * dt * DEBRIS_GRAVITY_MULT; // heavier debris arcs
+          const debrisPull = computeBlackHoleAcceleration(p.x, p.y);
+          if (debrisPull) {
+            const pullScale = p.kind === 'core' ? 1.2 : 1.6;
+            p.vx += debrisPull.ax * dt * pullScale;
+            p.vy += debrisPull.ay * dt * pullScale;
+          }
           p.vx *= driftDamp;
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
+          let px = p.x + p.vx * dt;
+          let py = p.y + p.vy * dt;
+
+          const captureHole = findBlackHoleCapture(px, py);
+          if (captureHole) {
+            p.life = 0;
+            continue;
+          }
 
           let normalX = 0;
           let normalY = 0;
           let contactCount = 0;
+          let pushX = 0;
+          let pushY = 0;
           for (const offset of samples) {
-            const sampleX = p.x + offset.x * p.radius;
-            const sampleY = p.y + offset.y * p.radius;
+            const sampleX = px + offset.x * p.radius;
+            const sampleY = py + offset.y * p.radius;
             if (!isSolidWorld(sampleX, sampleY)) continue;
             const info = resolvePenetrationAt(sampleX, sampleY);
             if (!info || info.depth <= 0) continue;
-            p.x += info.normal.x * info.depth;
-            p.y += info.normal.y * info.depth;
+            pushX += info.normal.x * info.depth;
+            pushY += info.normal.y * info.depth;
             normalX += info.normal.x;
             normalY += info.normal.y;
             contactCount++;
           }
 
-          const centerInfo = resolvePenetrationAt(p.x, p.y);
+          const centerInfo = resolvePenetrationAt(px, py);
           if (centerInfo && centerInfo.depth > 0) {
-            p.x += centerInfo.normal.x * centerInfo.depth;
-            p.y += centerInfo.normal.y * centerInfo.depth;
+            pushX += centerInfo.normal.x * centerInfo.depth;
+            pushY += centerInfo.normal.y * centerInfo.depth;
             normalX += centerInfo.normal.x;
             normalY += centerInfo.normal.y;
             contactCount++;
           }
+
+          if (contactCount > 0) {
+            px += pushX;
+            py += pushY;
+          }
+
+          p.x = px;
+          p.y = py;
 
           if (contactCount > 0) {
             const len = Math.hypot(normalX, normalY);
@@ -1608,8 +1920,21 @@ let camY = null;
             if (p.vy < -0.035) p.vy = -0.035;
             p.vx *= 0.997;
           }
+          const smokePull = computeBlackHoleAcceleration(p.x, p.y);
+          if (smokePull) {
+            const pullScale = p.source === 'void' ? 2.0 : 0.8;
+            p.vx += smokePull.ax * dt * pullScale;
+            p.vy += smokePull.ay * dt * pullScale;
+          }
           p.x += p.vx * dt;
           p.y += p.vy * dt;
+          if (p.source === 'void') {
+            const capture = findBlackHoleCapture(p.x, p.y);
+            if (capture) {
+              p.life = 0;
+              continue;
+            }
+          }
           const gy = groundYAt(p.x, p.y);
           if (p.y + p.radius >= gy) {
             p.y = gy - p.radius;
@@ -1820,8 +2145,18 @@ let camY = null;
             bomb.vx *= groundDrag;
             if (Math.abs(bomb.vx) < 0.00001) bomb.vx = 0;
           }
+          const bombPull = computeBlackHoleAcceleration(bomb.x, bomb.y);
+          if (bombPull) {
+            bomb.vx += bombPull.ax * dt;
+            bomb.vy += bombPull.ay * dt;
+          }
           bomb.x += bomb.vx * dt;
           bomb.y += bomb.vy * dt;
+          const capture = findBlackHoleCapture(bomb.x, bomb.y);
+          if (capture) {
+            absorbBombIntoBlackHole(bomb, capture);
+            continue;
+          }
           if (bomb.x < 0) {
             bomb.x = 0;
             bomb.vx = Math.abs(bomb.vx) * 0.35;
@@ -2004,6 +2339,51 @@ let camY = null;
         alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
       }
 
+      function isInsideBlackHole(hole, x, y, radiusOverride = null) {
+        if (!hole) return false;
+        const radius = radiusOverride != null ? radiusOverride : holeEventRadius(hole);
+        const dx = x - hole.x;
+        const dy = y - hole.y;
+        return dx * dx + dy * dy <= radius * radius;
+      }
+
+      function computeBlackHoleAcceleration(x, y, holeSet = activeBlackHoles) {
+        if (!holeSet || !holeSet.length) return null;
+        let ax = 0;
+        let ay = 0;
+        let influenced = false;
+        const minDist = BLACK_HOLE_MIN_DISTANCE;
+        for (const hole of holeSet) {
+          const pullRadius = holePullRadius(hole);
+          const dx = hole.x - x;
+          const dy = hole.y - y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq > pullRadius * pullRadius) continue;
+          influenced = true;
+          const dist = Math.sqrt(distSq) || minDist;
+          const clampedDist = Math.max(dist, minDist);
+          const falloff = 1 - Math.min(clampedDist / pullRadius, 1);
+          const accelBase = BLACK_HOLE_PULL_STRENGTH * Math.pow(falloff, 0.8);
+          const accel = Math.min(BLACK_HOLE_MAX_FORCE, accelBase * (pullRadius / (clampedDist + 0.0001)));
+          const nx = dx / clampedDist;
+          const ny = dy / clampedDist;
+          ax += nx * accel;
+          ay += ny * accel;
+        }
+        if (!influenced) return null;
+        return { ax, ay };
+      }
+
+      function findBlackHoleCapture(x, y, holeSet = activeBlackHoles) {
+        if (!holeSet || !holeSet.length) return null;
+        for (const hole of holeSet) {
+          if (isInsideBlackHole(hole, x, y)) {
+            return hole;
+          }
+        }
+        return null;
+      }
+
       // --- Engine dust/smoke when close to terrain ---
       function castThrustRay(originX, originY, dirX, dirY, maxDistance) {
         if (dirY <= 0) return null;
@@ -2096,8 +2476,17 @@ let camY = null;
           // gravity and slight horizontal drag
           p.vy += g * dt * 0.2; // very light fall
           p.vx *= 0.995;
+          const dustPull = computeBlackHoleAcceleration(p.x, p.y);
+          if (dustPull) {
+            p.vx += dustPull.ax * dt * 0.45;
+            p.vy += dustPull.ay * dt * 0.45;
+          }
           p.x += p.vx * dt;
           p.y += p.vy * dt;
+          if (findBlackHoleCapture(p.x, p.y)) {
+            p.life = 0;
+            continue;
+          }
           // collide with ground softly
           const gy = groundYAt(p.x, p.y);
           if (p.y + p.r >= gy) {
@@ -2194,6 +2583,56 @@ let camY = null;
         }
       }
 
+      function drawBlackHoles(holes) {
+        if (!holes || !holes.length) return;
+        const cellSize = terrain.cellSize;
+        const phase = blackHolePhase;
+        ctx.save();
+        const prev = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        for (const hole of holes) {
+          const eventRadius = holeEventRadius(hole);
+          const rimRadius = eventRadius + cellSize * 3.2;
+          const cells = Math.ceil(rimRadius / cellSize);
+          for (let gy = -cells; gy <= cells; gy++) {
+            for (let gx = -cells; gx <= cells; gx++) {
+              const cx = hole.x + gx * cellSize;
+              const cy = hole.y + gy * cellSize;
+              const dx = cx - hole.x;
+              const dy = cy - hole.y;
+              const dist = Math.hypot(dx, dy);
+              if (dist > rimRadius + cellSize * 0.5) continue;
+              let color = null;
+              if (dist <= eventRadius - cellSize * 0.4) {
+                color = '#000000';
+              } else if (dist <= eventRadius + cellSize * 0.8) {
+                const shade = 8 + Math.floor(Math.max(0, (dist - (eventRadius - cellSize * 0.2)) / cellSize) * 6);
+                color = `rgb(${shade},${shade},${shade + 6})`;
+              } else {
+                const swirl = Math.sin(phase * 1.6 + gx * 0.8 + gy * 0.55);
+                const falloff = 1 - Math.min(1, (dist - eventRadius) / (rimRadius - eventRadius + 0.0001));
+                const r = Math.max(20, Math.min(70, 35 + swirl * 14));
+                const g = Math.round(70 + 90 * falloff + swirl * 18);
+                const b = Math.round(110 + 110 * falloff + swirl * 28);
+                const alpha = 0.35 + falloff * 0.45;
+                color = `rgba(${r},${g},${b},${alpha})`;
+              }
+              if (!color) continue;
+              const half = cellSize / 2;
+              ctx.fillStyle = color;
+              ctx.fillRect(Math.round(cx - half), Math.round(cy - half), Math.ceil(cellSize), Math.ceil(cellSize));
+            }
+          }
+          ctx.strokeStyle = 'rgba(120, 90, 200, 0.25)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(hole.x, hole.y, eventRadius + cellSize * 0.5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.imageSmoothingEnabled = prev;
+        ctx.restore();
+      }
+
       function drawEditorGuides() {
         ctx.save();
         ctx.lineWidth = 2;
@@ -2213,6 +2652,30 @@ let camY = null;
         ctx.fillText('Spawn', spawn.x, spawn.y - 16);
         ctx.fillStyle = '#b8ffd4';
         ctx.fillText('Landing', pad.x + pad.w / 2, pad.y - 8);
+
+        const holes = ensureEditorBlackHoles();
+        if (holes.length) {
+          ctx.save();
+          ctx.setLineDash([terrain.cellSize * 0.9, terrain.cellSize * 0.6]);
+          for (const hole of holes) {
+            const eventRadius = holeEventRadius(hole);
+            const pullRadius = holePullRadius(hole);
+            ctx.strokeStyle = 'rgba(180, 150, 255, 0.75)';
+            ctx.beginPath();
+            ctx.arc(hole.x, hole.y, eventRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = 'rgba(120, 90, 200, 0.25)';
+            ctx.beginPath();
+            ctx.arc(hole.x, hole.y, pullRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(200, 180, 255, 0.9)';
+            ctx.fillRect(hole.x - 4, hole.y - 4, 8, 8);
+            ctx.fillStyle = '#dcd2ff';
+            ctx.fillText('Black hole', hole.x, hole.y - eventRadius - 10);
+          }
+          ctx.restore();
+        }
+
         ctx.textAlign = 'left';
         const cursor = editorState.cursorWorld;
         if (cursor) {
@@ -2288,6 +2751,7 @@ let camY = null;
           `cam: (${camX.toFixed(1)}, ${camY.toFixed(1)})  lander: (${lander.x.toFixed(1)}, ${lander.y.toFixed(1)})`,
           `vel: (${lander.vx.toFixed(3)}, ${lander.vy.toFixed(3)})  ang: ${lander.angle.toFixed(2)}  angVel: ${lander.angularVelocity.toFixed(5)}`,
           `bombs: ${activeBombs.length}  cooldown: ${bombCooldown.toFixed(0)}ms  next fuse: ${nextFuseMs === null ? '—' : (nextFuseMs / 1000).toFixed(2) + 's'}`,
+          `black holes: ${activeBlackHoles.length}`,
           `Hold H to toggle this overlay. R to reset.`
         ];
         ctx.font = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
@@ -2310,6 +2774,7 @@ let camY = null;
       }
 
       function update(dt) {
+        blackHolePhase = (blackHolePhase + dt * 0.0024) % (Math.PI * 2);
         updateDebris(dt);
         updateWreckFlames(dt);
         updateBlastSmoke(dt);
@@ -2344,6 +2809,11 @@ let camY = null;
         }
         // gravity
         lander.vy += g * dt;
+        const holeAccel = computeBlackHoleAcceleration(lander.x, lander.y);
+        if (holeAccel) {
+          lander.vx += holeAccel.ax * dt;
+          lander.vy += holeAccel.ay * dt;
+        }
         // update position
         lander.x += lander.vx * dt;
         lander.y += lander.vy * dt;
@@ -2358,6 +2828,11 @@ let camY = null;
         if (lander.x > maxX) {
           lander.x = maxX;
           if (lander.vx > 0) lander.vx = -lander.vx * tune.bounce;
+        }
+        const captureHole = findBlackHoleCapture(lander.x, lander.y);
+        if (captureHole) {
+          consumeLanderIntoBlackHole(captureHole);
+          return;
         }
         // Engine dust lifted from the ground by thrusters (emits along exhaust ray)
         // ADJUST DUST_MAX_DIST to control when dust starts appearing
@@ -2545,6 +3020,7 @@ let camY = null;
         ctx.translate(width / 2 - camX, height / 2 - camY);
         if (isGameplay || isEditor) {
           drawTerrain();
+          drawBlackHoles(isGameplay ? activeBlackHoles : terrain.blackHoles);
           if (isGameplay) {
             drawBombs();
             drawSmoke();

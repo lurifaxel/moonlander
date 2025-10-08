@@ -9,6 +9,7 @@ A 2D lunar-lander style game with cartoon physics:
 - Fuel‑limited thrust, rotational momentum.
 - Crash explosion with bouncing debris.
 - Ground‑sourced **dust** kicked up by the thrusters; size + opacity scale with proximity to the surface and exhaust ray impact.
+- Editor-placed **black holes** that tug ships, bombs, dust, and debris; cross the event horizon and the lander shreds into inward-spiraling fragments while the singularity remains untouched.
 - Success celebration confetti + pad glow.
 - Level regeneration **only after** a successful landing.
 - Start menu with a built-in level editor for custom terrain, spawn, and landing pads.
@@ -27,16 +28,18 @@ The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 an
 ### Level editor
 Choose **Create Level** on the start menu to enter the editor:
 - **Left-click & drag**: sculpt the ground contour in realtime.
-- **Scroll wheel**: cycle the active placement between spawn point and landing zone.
-- **Click** (without dragging): place the currently selected object.
+- **Scroll wheel**: cycle the active placement between spawn point, landing zone, and black hole.
+- **Click** (without dragging): place the currently selected object. Black holes snap to open space and pull nearby objects during test flights.
 - **R**: spawn the lander to test your custom level.
 - **Esc**: leave test mode back to editing, or exit the editor to the start menu.
 - **Hold Alt + drag**: carve terrain away to sculpt caverns and overhangs; release Alt to add material again.
+- **Alt + click** while **Black hole** is selected: remove the nearest hole inside the dashed event-horizon guide.
 - Landing pads snap to the surface you click—even under overhangs—so you can build cavern pads.
 
 ## Gameplay rules
 - Land while **over the pad**, roughly upright, and below speed thresholds. On success, you’ll see confetti and a glowing pad. Press **R** for the **next level** (terrain regenerates).
 - On crash, debris flies and bounces. Press **R** to retry on the **same terrain**.
+- Black holes are lethal: their gravity wells bend bomb arcs, drag dust streams, and if the lander slips inside the event horizon it collapses into debris with no terrain crater.
 
 ## Systems
 - **Terrain**
@@ -49,6 +52,10 @@ Choose **Create Level** on the start menu to enter the editor:
   - **Dust**: `spawnSmoke`/`updateSmoke`/`drawSmoke` emit from the **terrain** at the **exhaust ray impact** (`findThrusterImpact()`). Proximity controls emission density, size, and opacity.
   - **Debris**: `spawnExplosion` + `updateDebris` + `drawDebris` on crash.
   - **Confetti**: `spawnWinFx` + `updateWinFx` + `drawWinFx` on success.
+- **Black holes**
+  - Stored on `terrain.blackHoles` (editor) and cloned into `activeBlackHoles` for play. The editor placements are serialized alongside terrain voxels.
+  - `computeBlackHoleAcceleration()` applies falloff-capped gravity to the lander, bombs, debris, dust, and blast smoke. `findBlackHoleCapture()` detects event-horizon entry for ships and particles.
+  - `consumeLanderIntoBlackHole()` creates the singularity death sequence without deforming terrain, and `absorbBombIntoBlackHole()` swallows bombs without triggering `explodeBomb()`.
 - **Success / Failure**
   - Landing thresholds are modest (upright tolerance, max speed, vx/vy). On success, `shouldRegen=true`; on crash, terrain persists.
 
