@@ -18,10 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Text after successful landing does not signal restart.
+- Meteor strikes now detonate the lander (and nearby bombs) when a projectile collides mid-air, matching hazard expectations.
 
 ### Changed
 
 - Enlarged and centered the playfield; canvas now scales with the browser up to 1280x720 for a more immersive layout.
+- Level editor meteors feature clickable timing/speed/size inputs, digit hotkeys (1–4) for tool selection, and always spawn from above the visible playfield.
 
 ## [0.1.0] - 2025-10-04
 

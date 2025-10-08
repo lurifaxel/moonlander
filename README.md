@@ -29,14 +29,14 @@ The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 an
 ### Level editor
 Choose **Create Level** on the start menu to enter the editor:
 - **Left-click & drag**: sculpt the ground contour in realtime.
-- **Scroll wheel**: cycle the active placement between spawn point, landing zone, black hole, and meteor.
+- **Scroll wheel** or press **1–4**: cycle the active placement between spawn point, landing zone, black hole, and meteor.
 - **Click** (without dragging): place the currently selected object. Black holes snap to open space and pull nearby objects during test flights.
 - **R**: spawn the lander to test your custom level.
 - **Esc**: leave test mode back to editing, or exit the editor to the start menu.
 - **Hold Alt + drag**: carve terrain away to sculpt caverns and overhangs; release Alt to add material again.
 - **Alt + click** while **Black hole** is selected: remove the nearest hole inside the dashed event-horizon guide.
 - Landing pads snap to the surface you click—even under overhangs—so you can build cavern pads.
-- **Meteor tool**: click and drag to define the meteor’s path, `Alt + click` to delete the nearest meteor, and use `[ / ]`, `- / =`, `, / .`, and `; / '` to tweak size, speed, warning lead time, and arrival time respectively.
+- **Meteor tool**: click and drag to define the meteor’s path (the rock always spawns above the viewport), `Alt + click` to delete the nearest meteor, use `[ / ]`, `- / =`, `, / .`, and `; / '` to tweak size, speed, warning lead time, and arrival time, or click the meteor panel fields to edit those values directly.
 
 ## Gameplay rules
 - Land while **over the pad**, roughly upright, and below speed thresholds. On success, you’ll see confetti and a glowing pad. Press **R** for the **next level** (terrain regenerates).

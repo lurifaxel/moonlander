@@ -89,12 +89,78 @@
       font-size: 13px;
       line-height: 1.5;
       z-index: 6;
-      pointer-events: none;
+      pointer-events: auto;
       text-align: left;
     }
     #editorPanel strong {
       color: #8fdfff;
       font-weight: 600;
+    }
+    #editorPanel .meteor-controls {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(143, 223, 255, 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: auto;
+    }
+    #editorPanel .meteor-controls h4 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      color: #ffd8a6;
+      font-weight: 600;
+    }
+    #editorPanel .meteor-controls .meteor-section {
+      background: rgba(12, 18, 30, 0.55);
+      border: 1px solid rgba(143, 223, 255, 0.15);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #editorPanel .meteor-controls .meteor-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    #editorPanel .meteor-controls .meteor-list button {
+      background: rgba(29, 42, 68, 0.75);
+      border: 1px solid rgba(143, 223, 255, 0.3);
+      border-radius: 4px;
+      color: #f0f6ff;
+      font-size: 12px;
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+    #editorPanel .meteor-controls .meteor-list button.selected {
+      background: rgba(143, 223, 255, 0.25);
+      border-color: rgba(143, 223, 255, 0.6);
+    }
+    #editorPanel .meteor-controls label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    #editorPanel .meteor-controls input[type='number'] {
+      flex: 0 0 84px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid rgba(143, 223, 255, 0.45);
+      background: rgba(12, 18, 30, 0.9);
+      color: #f5fbff;
+      font-size: 12px;
+    }
+    #editorPanel .meteor-controls input[type='number']::-webkit-outer-spin-button,
+    #editorPanel .meteor-controls input[type='number']::-webkit-inner-spin-button {
+      opacity: 0.5;
+    }
+    #editorPanel .meteor-controls .meteor-empty {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
     }
   </style>
 </head>
@@ -224,6 +290,7 @@
       const METEOR_GRAVITY_SCALE = 0.9;      // multiplier applied to g for meteor descent
       const METEOR_CRATER_RADIUS_SCALE = 2.1; // crater radius multiplier per meteor radius
       const METEOR_CRATER_DEPTH_SCALE = 1.25; // crater depth multiplier per meteor radius
+      const METEOR_SPAWN_ABOVE_MARGIN = 60;   // ensure meteors spawn above the visible top edge
       const METEOR_SPARK_COUNT = 18;          // sparks spawned on impact
       const METEOR_WARNING_FLASH_MS = 280;    // period for warning flash oscillation
       const METEOR_WARNING_ALPHA_MIN = 0.22;
@@ -775,14 +842,18 @@
         terrain.meteors = meteors;
         editorState.meteors = meteors;
         terrain.dirtyRender = true;
+        updateEditorOverlay();
         return true;
       }
 
       function editorStartMeteorPlacement(x, y) {
         const meteors = ensureEditorMeteors();
         editorState.isPlacingMeteor = true;
+        const camYEditor = editorState.camY != null ? editorState.camY : (camY != null ? camY : height * 0.65);
+        const viewTop = camYEditor - height / 2;
+        const spawnY = Math.min(-METEOR_SPAWN_ABOVE_MARGIN, viewTop - METEOR_SPAWN_ABOVE_MARGIN);
         editorState.pendingMeteor = {
-          spawn: { x, y },
+          spawn: { x, y: spawnY },
           target: { x, y },
           radius: Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, editorState.meteorDefaults.radius)),
           speed: Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, editorState.meteorDefaults.speed)),
@@ -791,6 +862,7 @@
         };
         editorState.selectedMeteor = -1;
         terrain.meteors = meteors;
+        updateEditorOverlay();
       }
 
       function editorCommitPendingMeteor() {
@@ -813,6 +885,7 @@
         terrain.meteors = meteors;
         editorState.meteors = meteors;
         terrain.dirtyRender = true;
+        updateEditorOverlay();
         return true;
       }
 
@@ -885,12 +958,155 @@
         }
       }
 
-      function updateEditorPanel(statusLines) {
+      function updateEditorPanel(statusLines, extraHtml = '') {
+        let html = '';
         if (statusLines && statusLines.length) {
-          editorPanel.innerHTML = statusLines.map(line => `<div>${line}</div>`).join('');
-        } else {
-          editorPanel.innerHTML = '';
+          html += statusLines.map(line => `<div>${line}</div>`).join('');
         }
+        if (extraHtml) {
+          html += extraHtml;
+        }
+        editorPanel.innerHTML = html;
+      }
+
+      function buildMeteorEditorControls() {
+        const meteors = ensureEditorMeteors();
+        const selectedIndex = editorState.selectedMeteor;
+        const hasSelection = selectedIndex != null && selectedIndex >= 0 && selectedIndex < meteors.length;
+        const selected = hasSelection ? meteors[selectedIndex] : null;
+        const defaults = editorState.meteorDefaults;
+        const formatSeconds = (ms) => (Math.max(0, ms || 0) / 1000).toFixed(2);
+        const formatSpeed = (speed) => (speed ?? METEOR_MIN_SPEED).toFixed(2);
+        const formatRadius = (radius) => Math.round(radius ?? METEOR_MIN_RADIUS);
+
+        const listContent = meteors.length
+          ? `<div class="meteor-list">${meteors.map((m, i) => {
+              const selectedClass = i === selectedIndex ? ' selected' : '';
+              return `<button type="button" data-meteor-select="${i}" class="meteor-choice${selectedClass}">Meteor ${i + 1}</button>`;
+            }).join('')}</div>`
+          : '<div class="meteor-empty">No meteors placed yet.</div>';
+
+        const selectedContent = hasSelection
+          ? [
+              `<label>Arrival time (s)<input type="number" step="0.1" min="0" data-meteor-scope="selected" data-field="startMs" value="${formatSeconds(selected.startMs)}"></label>`,
+              `<label>Warning lead (s)<input type="number" step="0.1" min="0" data-meteor-scope="selected" data-field="warningLeadMs" value="${formatSeconds(selected.warningLeadMs)}"></label>`,
+              `<label>Speed (px/ms)<input type="number" step="0.01" min="${METEOR_MIN_SPEED}" max="${METEOR_MAX_SPEED}" data-meteor-scope="selected" data-field="speed" value="${formatSpeed(selected.speed)}"></label>`,
+              `<label>Size (px radius)<input type="number" step="1" min="${METEOR_MIN_RADIUS}" max="${METEOR_MAX_RADIUS}" data-meteor-scope="selected" data-field="radius" value="${formatRadius(selected.radius)}"></label>`,
+            ].join('')
+          : '<div class="meteor-empty">Click a meteor path to edit its timing, warning, speed, and size.</div>';
+
+        const defaultsContent = [
+          `<label>Arrival time (s)<input type="number" step="0.1" min="0" data-meteor-scope="defaults" data-field="startMs" value="${formatSeconds(defaults.startMs)}"></label>`,
+          `<label>Warning lead (s)<input type="number" step="0.1" min="0" data-meteor-scope="defaults" data-field="warningLeadMs" value="${formatSeconds(defaults.warningLeadMs)}"></label>`,
+          `<label>Speed (px/ms)<input type="number" step="0.01" min="${METEOR_MIN_SPEED}" max="${METEOR_MAX_SPEED}" data-meteor-scope="defaults" data-field="speed" value="${formatSpeed(defaults.speed)}"></label>`,
+          `<label>Size (px radius)<input type="number" step="1" min="${METEOR_MIN_RADIUS}" max="${METEOR_MAX_RADIUS}" data-meteor-scope="defaults" data-field="radius" value="${formatRadius(defaults.radius)}"></label>`,
+        ].join('');
+
+        return `
+          <div class="meteor-controls">
+            <div class="meteor-section">
+              <h4>Placed Meteors</h4>
+              ${listContent}
+            </div>
+            <div class="meteor-section">
+              <h4>Selected Meteor</h4>
+              ${selectedContent}
+            </div>
+            <div class="meteor-section">
+              <h4>Defaults for New Meteors</h4>
+              ${defaultsContent}
+            </div>
+          </div>
+        `;
+      }
+
+      function attachMeteorEditorEvents() {
+        const selectButtons = editorPanel.querySelectorAll('[data-meteor-select]');
+        selectButtons.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const index = parseInt(btn.getAttribute('data-meteor-select'), 10);
+            if (Number.isNaN(index)) return;
+            editorState.selectedMeteor = index;
+            updateEditorOverlay();
+          });
+        });
+        const inputs = editorPanel.querySelectorAll('input[data-meteor-scope]');
+        inputs.forEach((input) => {
+          input.addEventListener('change', handleMeteorInputEvent);
+          input.addEventListener('blur', handleMeteorInputEvent);
+        });
+      }
+
+      function handleMeteorInputEvent(event) {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement)) return;
+        const scope = input.getAttribute('data-meteor-scope');
+        const field = input.getAttribute('data-field');
+        if (!scope || !field) return;
+        let raw = parseFloat(input.value);
+        if (Number.isNaN(raw)) {
+          updateEditorOverlay();
+          return;
+        }
+        const applySeconds = field === 'startMs' || field === 'warningLeadMs';
+        if (applySeconds) {
+          raw = Math.max(0, raw) * 1000;
+        }
+        if (field === 'speed') {
+          raw = Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, raw));
+        } else if (field === 'radius') {
+          raw = Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, Math.round(raw)));
+        } else if (field === 'startMs' || field === 'warningLeadMs') {
+          raw = Math.max(0, raw);
+        }
+
+        if (scope === 'selected') {
+          const changed = adjustSelectedMeteor((meteor) => {
+            if (field === 'startMs') {
+              meteor.startMs = raw;
+              if (meteor.warningLeadMs > meteor.startMs) {
+                meteor.warningLeadMs = meteor.startMs;
+              }
+            } else if (field === 'warningLeadMs') {
+              meteor.warningLeadMs = Math.min(meteor.startMs, raw);
+            } else {
+              meteor[field] = raw;
+            }
+            return true;
+          });
+          if (!changed) {
+            updateEditorOverlay();
+            return;
+          }
+          terrain.dirtyRender = true;
+        } else if (scope === 'defaults') {
+          const defaults = editorState.meteorDefaults;
+          if (!defaults) return;
+          if (field === 'startMs') {
+            defaults.startMs = raw;
+            if (defaults.warningLeadMs > defaults.startMs) {
+              defaults.warningLeadMs = defaults.startMs;
+            }
+          } else if (field === 'warningLeadMs') {
+            defaults.warningLeadMs = Math.min(defaults.startMs, raw);
+          } else {
+            defaults[field] = raw;
+          }
+          if (editorState.pendingMeteor) {
+            if (field === 'startMs') {
+              editorState.pendingMeteor.startMs = raw;
+              if (editorState.pendingMeteor.warningLeadMs > raw) {
+                editorState.pendingMeteor.warningLeadMs = raw;
+              }
+            } else if (field === 'warningLeadMs') {
+              editorState.pendingMeteor.warningLeadMs = Math.min(editorState.pendingMeteor.startMs, raw);
+            } else {
+              editorState.pendingMeteor[field] = raw;
+            }
+          }
+          terrain.dirtyRender = true;
+        }
+        updateEditorOverlay();
       }
 
       function labelForPlacement(key) {
@@ -1389,7 +1605,7 @@ let camY = null;
           const lines = [
             '<strong>Level Editor</strong>',
             'Left drag: add terrain (hold Alt to carve)',
-            `Mouse wheel: select ${placementLabel}`,
+            `Mouse wheel or 1-4: select ${placementLabel}`,
           ];
           if (option === 'blackHole') {
             clickInstruction = 'Click: place black hole (Alt + click removes one)';
@@ -1398,11 +1614,18 @@ let camY = null;
             lines.push('Alt + click: delete nearest meteor');
             lines.push('[/ ] radius  |  -/ = speed');
             lines.push(`,/ . warning lead  |  ;/' (apostrophe) start time`);
+            lines.push('Select a meteor or defaults in the panel to edit timing, warning, speed, and size.');
           }
           lines.splice(3, 0, clickInstruction);
           lines.push('R: test this level');
           lines.push('Esc: back to menu');
-          updateEditorPanel(lines);
+          if (option === 'meteor') {
+            const panelHtml = buildMeteorEditorControls();
+            updateEditorPanel(lines, panelHtml);
+            attachMeteorEditorEvents();
+          } else {
+            updateEditorPanel(lines);
+          }
         } else if (appMode === APP_MODE.TEST) {
           editorPanel.classList.remove('hidden');
           updateEditorPanel([
@@ -1528,6 +1751,7 @@ let camY = null;
       window.addEventListener('keydown', (e) => {
         audio.unlock();
         const key = e.key === 'Spacebar' ? ' ' : e.key;
+        const isEditorInput = editorPanel.contains(e.target) && e.target instanceof HTMLInputElement;
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
         }
@@ -1571,8 +1795,20 @@ let camY = null;
           return;
         }
         if (appMode === APP_MODE.EDITOR) {
+          if (!isEditorInput) {
+            const placementMap = { '1': 'spawn', '2': 'landing', '3': 'blackHole', '4': 'meteor' };
+            if (placementMap[key]) {
+              const targetIndex = editorState.placementOptions.indexOf(placementMap[key]);
+              if (targetIndex !== -1) {
+                editorState.placementIndex = targetIndex;
+                updateEditorOverlay();
+              }
+              e.preventDefault();
+              return;
+            }
+          }
           const placement = editorState.placementOptions[editorState.placementIndex];
-          if (placement === 'meteor') {
+          if (placement === 'meteor' && !isEditorInput) {
             const adjustDefault = (keyName, delta, min, max) => {
               const next = Math.max(min, Math.min(max, editorState.meteorDefaults[keyName] + delta));
               editorState.meteorDefaults[keyName] = next;
@@ -1706,6 +1942,7 @@ let camY = null;
           if (selected !== -1) {
             editorState.selectedMeteor = selected;
             editorCancelPendingMeteor();
+            updateEditorOverlay();
             return;
           }
           editorStartMeteorPlacement(world.x, world.y);
@@ -2593,8 +2830,9 @@ let camY = null;
       function normalizeMeteorDef(def, index = 0) {
         if (!def) return null;
         const spawnX = clamp(def.spawn?.x ?? terrain.width / 2, 0, terrain.width);
-        const spawnYRaw = def.spawn?.y ?? -120;
-        const spawnY = Math.max(-terrain.height * 1.5, Math.min(terrain.height + 600, spawnYRaw));
+        const spawnYRaw = def.spawn?.y ?? -METEOR_SPAWN_ABOVE_MARGIN;
+        const spawnYAbove = Math.min(spawnYRaw, -METEOR_SPAWN_ABOVE_MARGIN);
+        const spawnY = Math.max(-terrain.height * 1.5, Math.min(terrain.height + 600, spawnYAbove));
         const targetX = clamp(def.target?.x ?? spawnX, 0, terrain.width);
         const targetYRaw = def.target?.y ?? terrain.height * 0.9;
         const targetY = Math.max(-400, Math.min(terrain.height + 600, targetYRaw));
@@ -2664,7 +2902,6 @@ let camY = null;
           vy: dirY * event.speed,
           radius: event.radius,
           angle: Math.atan2(dirY, dirX),
-          spin: (Math.random() - 0.5) * 0.0045,
           trailTimer: 0,
           exploded: false,
           target: { ...event.target },
@@ -2712,6 +2949,7 @@ let camY = null;
         const craterRadius = Math.max(meteor.radius * 1.2, Math.min(METEOR_MAX_RADIUS * 1.6, meteor.radius * METEOR_CRATER_RADIUS_SCALE));
         const craterDepth = Math.max(meteor.radius * 0.6, meteor.radius * METEOR_CRATER_DEPTH_SCALE);
         deformTerrainAt(impactX, groundY, craterRadius, craterDepth);
+        const explosionY = Math.min(hitY, groundY);
         const dustCount = 36 + Math.round(meteor.radius * 0.8);
         for (let i = 0; i < dustCount; i++) {
           const spread = (Math.random() - 0.5) * craterRadius * 1.2;
@@ -2754,7 +2992,7 @@ let camY = null;
         if (audio && typeof audio.playMeteorImpact === 'function') {
           audio.playMeteorImpact();
         }
-        applyExplosionEffects(impactX, groundY);
+        applyExplosionEffects(impactX, explosionY);
       }
 
       function updateMeteors(dt) {
@@ -2793,7 +3031,7 @@ let camY = null;
           meteor.vy += g * dt * METEOR_GRAVITY_SCALE;
           meteor.x += meteor.vx * dt;
           meteor.y += meteor.vy * dt;
-          meteor.angle += meteor.spin * dt;
+          meteor.angle = Math.atan2(meteor.vy, meteor.vx);
           meteor.trailTimer += dt;
           while (meteor.trailTimer >= METEOR_TRAIL_INTERVAL) {
             spawnMeteorTrail(meteor);
@@ -3390,7 +3628,7 @@ let camY = null;
             ctx.stroke();
             ctx.fillStyle = color;
             ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
-            const label = `t=${(meteor.startMs/1000).toFixed(1)}s  warn=${(meteor.warningLeadMs/1000).toFixed(1)}s  v=${meteor.speed.toFixed(2)}`;
+            const label = `t=${(meteor.startMs/1000).toFixed(1)}s  warn=${(meteor.warningLeadMs/1000).toFixed(1)}s  v=${meteor.speed.toFixed(2)}  r=${meteor.radius.toFixed(0)}`;
             ctx.fillText(label, meteor.spawn.x + 12, meteor.spawn.y - 12);
             ctx.setLineDash([8, 8]);
           }
