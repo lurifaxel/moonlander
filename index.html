@@ -379,10 +379,7 @@
         const baseline = editorState.testBaseline;
         if (!baseline) return;
         const solidSnapshot = baseline.solids ? baseline.solids : baseline;
-        if (terrain.solids.length !== solidSnapshot.length) {
-          terrain.solids = new Uint8Array(solidSnapshot.length);
-        }
-        terrain.solids.set(solidSnapshot);
+        terrain.solids = cloneSolidsArray(solidSnapshot);
         terrain.dirtyRender = true;
         const baselineHoles = baseline.blackHoles ? baseline.blackHoles : [];
         terrain.blackHoles = cloneBlackHoles(baselineHoles);
