@@ -291,6 +291,7 @@
       const METEOR_CRATER_RADIUS_SCALE = 2.1; // crater radius multiplier per meteor radius
       const METEOR_CRATER_DEPTH_SCALE = 1.25; // crater depth multiplier per meteor radius
       const METEOR_SPAWN_ABOVE_MARGIN = 60;   // ensure meteors spawn above the visible top edge
+      const METEOR_SPAWN_HANDLE_OFFSET = 28;  // screen offset for the draggable spawn handle
       const METEOR_SPARK_COUNT = 18;          // sparks spawned on impact
       const METEOR_WARNING_FLASH_MS = 280;    // period for warning flash oscillation
       const METEOR_WARNING_ALPHA_MIN = 0.22;
@@ -388,6 +389,13 @@
         const baselineMeteors = baseline.meteors ? baseline.meteors : [];
         terrain.meteors = cloneMeteors(baselineMeteors);
         editorState.meteors = terrain.meteors;
+        if (baseline.pad) {
+          pad.x = baseline.pad.x;
+          pad.y = baseline.pad.y;
+          pad.w = baseline.pad.w;
+          pad.h = baseline.pad.h;
+        }
+        alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
         if (editorState.grid) {
           editorState.grid.solids = terrain.solids;
           editorState.grid.blackHoles = terrain.blackHoles;
@@ -820,13 +828,29 @@
         let bestDist = Infinity;
         for (let i = 0; i < meteors.length; i++) {
           const meteor = meteors[i];
-          const dx = meteor.spawn.x - x;
-          const dy = meteor.spawn.y - y;
-          const reach = meteor.radius * radiusMultiplier + 14;
-          const dist = Math.hypot(dx, dy);
-          if (dist <= reach && dist < bestDist) {
+          const spawnHandle = meteorSpawnHandlePosition(meteor);
+          const spawnReach = Math.max(18, meteor.radius * radiusMultiplier + 14);
+          const spawnDist = Math.hypot(spawnHandle.x - x, spawnHandle.y - y);
+          if (spawnDist <= spawnReach && spawnDist < bestDist) {
             index = i;
-            bestDist = dist;
+            bestDist = spawnDist;
+            continue;
+          }
+          const targetReach = Math.max(18, meteor.radius * 0.6 * radiusMultiplier + 12);
+          const targetDist = Math.hypot(meteor.target.x - x, meteor.target.y - y);
+          if (targetDist <= targetReach && targetDist < bestDist) {
+            index = i;
+            bestDist = targetDist;
+            continue;
+          }
+          const projection = projectPointOnSegment(x, y, spawnHandle.x, spawnHandle.y, meteor.target.x, meteor.target.y);
+          if (projection.t >= 0 && projection.t <= 1) {
+            const pathReach = Math.max(18, meteor.radius * 0.5 * radiusMultiplier + 10);
+            const pathDist = Math.hypot(x - projection.x, y - projection.y);
+            if (pathDist <= pathReach && pathDist < bestDist) {
+              index = i;
+              bestDist = pathDist;
+            }
           }
         }
         return index;
@@ -900,13 +924,33 @@
         return index;
       }
 
+      function currentEditorViewTop() {
+        const camYEditor = editorState.camY != null ? editorState.camY : (camY != null ? camY : height * 0.65);
+        return camYEditor - height / 2;
+      }
+
+      function meteorSpawnHandlePosition(meteor) {
+        if (!meteor || !meteor.spawn) {
+          const viewTopFallback = currentEditorViewTop();
+          return {
+            x: 0,
+            y: viewTopFallback + METEOR_SPAWN_HANDLE_OFFSET,
+          };
+        }
+        clampMeteorSpawnPosition(meteor);
+        const viewTop = currentEditorViewTop();
+        return {
+          x: meteor.spawn.x,
+          y: viewTop + METEOR_SPAWN_HANDLE_OFFSET,
+        };
+      }
+
       function clampMeteorSpawnPosition(meteor) {
         if (!meteor || !meteor.spawn) return;
         meteor.spawn.x = clamp(meteor.spawn.x, 0, terrain.width);
-        const camYEditor = editorState.camY != null ? editorState.camY : (camY != null ? camY : height * 0.65);
-        const viewTop = camYEditor - height / 2;
+        const viewTop = currentEditorViewTop();
         const minSpawnY = Math.min(-METEOR_SPAWN_ABOVE_MARGIN, viewTop - METEOR_SPAWN_ABOVE_MARGIN);
-        meteor.spawn.y = Math.min(meteor.spawn.y, minSpawnY);
+        meteor.spawn.y = minSpawnY;
       }
 
       function clampMeteorTargetPosition(meteor) {
@@ -950,7 +994,8 @@
         };
         for (let i = 0; i < meteors.length; i++) {
           const meteor = meteors[i];
-          const spawnDist = Math.hypot(x - meteor.spawn.x, y - meteor.spawn.y);
+          const spawnHandle = meteorSpawnHandlePosition(meteor);
+          const spawnDist = Math.hypot(x - spawnHandle.x, y - spawnHandle.y);
           if (spawnDist <= handleRadius) {
             consider({
               type: 'meteor',
@@ -958,8 +1003,8 @@
               handle: 'spawn',
               dist: spawnDist,
               priority: 0,
-              offsetX: meteor.spawn.x - x,
-              offsetY: meteor.spawn.y - y,
+              offsetX: meteor.spawn.x - spawnHandle.x,
+              offsetY: meteor.spawn.y - spawnHandle.y,
             });
           }
           const targetDist = Math.hypot(x - meteor.target.x, y - meteor.target.y);
@@ -974,7 +1019,7 @@
               offsetY: meteor.target.y - y,
             });
           }
-          const projection = projectPointOnSegment(x, y, meteor.spawn.x, meteor.spawn.y, meteor.target.x, meteor.target.y);
+          const projection = projectPointOnSegment(x, y, spawnHandle.x, spawnHandle.y, meteor.target.x, meteor.target.y);
           const pathDist = Math.hypot(x - projection.x, y - projection.y);
           if (pathDist <= pathRadius && projection.t > 0.08 && projection.t < 0.92) {
             consider({
@@ -1794,6 +1839,7 @@ let camY = null;
             solids: cloneSolidsArray(terrain.solids),
             blackHoles: cloneBlackHoles(terrain.blackHoles),
             meteors: cloneMeteors(terrain.meteors),
+            pad: { x: pad.x, y: pad.y, w: pad.w, h: pad.h },
           };
         } else if (editorState.testBaseline) {
           const solidSnapshot = editorState.testBaseline.solids || editorState.testBaseline;
@@ -1805,6 +1851,14 @@ let camY = null;
           editorState.blackHoles = terrain.blackHoles;
           terrain.meteors = cloneMeteors(editorState.testBaseline.meteors);
           editorState.meteors = terrain.meteors;
+          if (editorState.testBaseline.pad) {
+            const baselinePad = editorState.testBaseline.pad;
+            pad.x = baselinePad.x;
+            pad.y = baselinePad.y;
+            pad.w = baselinePad.w;
+            pad.h = baselinePad.h;
+          }
+          alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
         }
         appMode = APP_MODE.TEST;
         startMenu.classList.add('hidden');
@@ -2349,6 +2403,7 @@ let camY = null;
         resetMeteorState();
         activeBlackHoles = cloneBlackHoles(terrain.blackHoles);
         blackHolePhase = 0;
+        alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
         audio.reset();
         const camSourceX = camera && camera.x != null ? camera.x : lander.x;
         const camSourceY = camera && camera.y != null ? camera.y : lander.y;
@@ -2449,7 +2504,7 @@ let camY = null;
           });
         }
 
-        const smokeCount = 34 + Math.floor(Math.random() * 22);
+        const smokeCount = 18 + Math.floor(Math.random() * 14);
         for (let i = 0; i < smokeCount; i++) {
           const spread = (Math.random() - 0.5) * 120;
           const spawnX = clamp(x + spread, 0, terrain.width);
@@ -3880,18 +3935,19 @@ let camY = null;
           ctx.setLineDash([8, 8]);
           for (let i = 0; i < meteors.length; i++) {
             const meteor = meteors[i];
+            const spawnHandle = meteorSpawnHandlePosition(meteor);
             const isSelected = i === editorState.selectedMeteor;
             const color = isSelected ? 'rgba(255, 214, 102, 0.95)' : 'rgba(255, 140, 66, 0.85)';
             ctx.strokeStyle = color;
             ctx.lineWidth = isSelected ? 3 : 2;
             ctx.beginPath();
-            ctx.moveTo(meteor.spawn.x, meteor.spawn.y);
+            ctx.moveTo(spawnHandle.x, spawnHandle.y);
             ctx.lineTo(meteor.target.x, meteor.target.y);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.strokeStyle = color;
             ctx.beginPath();
-            ctx.arc(meteor.spawn.x, meteor.spawn.y, meteor.radius, 0, Math.PI * 2);
+            ctx.arc(spawnHandle.x, spawnHandle.y, meteor.radius, 0, Math.PI * 2);
             ctx.stroke();
             ctx.beginPath();
             ctx.arc(meteor.target.x, meteor.target.y, Math.max(6, meteor.radius * 0.6), 0, Math.PI * 2);
@@ -3899,20 +3955,21 @@ let camY = null;
             ctx.fillStyle = color;
             ctx.font = '11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
             const label = `t=${(meteor.startMs/1000).toFixed(1)}s  warn=${(meteor.warningLeadMs/1000).toFixed(1)}s  v=${meteor.speed.toFixed(2)}  r=${meteor.radius.toFixed(0)}`;
-            ctx.fillText(label, meteor.spawn.x + 12, meteor.spawn.y - 12);
+            ctx.fillText(label, spawnHandle.x + 12, spawnHandle.y - 12);
             ctx.setLineDash([8, 8]);
           }
           if (editorState.pendingMeteor) {
             const pending = editorState.pendingMeteor;
+            const spawnHandle = meteorSpawnHandlePosition(pending);
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(pending.spawn.x, pending.spawn.y);
+            ctx.moveTo(spawnHandle.x, spawnHandle.y);
             ctx.lineTo(pending.target.x, pending.target.y);
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.arc(pending.spawn.x, pending.spawn.y, pending.radius, 0, Math.PI * 2);
+            ctx.arc(spawnHandle.x, spawnHandle.y, pending.radius, 0, Math.PI * 2);
             ctx.stroke();
             ctx.beginPath();
             ctx.arc(pending.target.x, pending.target.y, Math.max(6, pending.radius * 0.6), 0, Math.PI * 2);
