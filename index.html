@@ -293,6 +293,7 @@
       const METEOR_SPAWN_ABOVE_MARGIN = 60;   // ensure meteors spawn above the visible top edge
       const METEOR_SPAWN_HANDLE_OFFSET = 28;  // screen offset for the draggable spawn handle
       const METEOR_SPARK_COUNT = 18;          // sparks spawned on impact
+      const METEOR_IMPACT_SMOKE_SCALE = 1;    // multiplier for post-impact dust plume count
       const METEOR_WARNING_FLASH_MS = 280;    // period for warning flash oscillation
       const METEOR_WARNING_ALPHA_MIN = 0.22;
       const METEOR_WARNING_ALPHA_MAX = 0.8;
@@ -3275,7 +3276,10 @@ let camY = null;
         const craterDepth = Math.max(meteor.radius * 0.6, meteor.radius * METEOR_CRATER_DEPTH_SCALE);
         deformTerrainAt(impactX, groundY, craterRadius, craterDepth);
         const explosionY = Math.min(hitY, groundY);
-        const dustCount = 36 + Math.round(meteor.radius * 0.8);
+        const dustCount = Math.max(
+          0,
+          Math.round((36 + meteor.radius * 0.8) * METEOR_IMPACT_SMOKE_SCALE)
+        );
         for (let i = 0; i < dustCount; i++) {
           const spread = (Math.random() - 0.5) * craterRadius * 1.2;
           const spawnX = clamp(impactX + spread, 0, terrain.width);
