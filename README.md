@@ -31,6 +31,7 @@ Choose **Create Level** on the start menu to enter the editor:
 - **Left-click & drag**: sculpt the ground contour in realtime.
 - **Scroll wheel** or press **1–4**: cycle the active placement between spawn point, landing zone, black hole, and meteor.
 - **Click** (without dragging): place the currently selected object. Black holes snap to open space and pull nearby objects during test flights.
+- **Drag** the selected object: move spawn points, slide the landing zone, reposition black holes, or grab meteor handles (start, end, or mid-path) to retarget their strikes.
 - **R**: spawn the lander to test your custom level.
 - **Esc**: leave test mode back to editing, or exit the editor to the start menu.
 - **Hold Alt + drag**: carve terrain away to sculpt caverns and overhangs; release Alt to add material again.

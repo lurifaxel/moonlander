@@ -344,6 +344,7 @@
         pendingMeteor: null,
         isPlacingMeteor: false,
         selectedMeteor: -1,
+        dragging: null,
       };
 
       function cloneSolidsArray(source) {
@@ -679,6 +680,7 @@
         editorState.pendingMeteor = null;
         editorState.isPlacingMeteor = false;
         editorState.selectedMeteor = -1;
+        editorState.dragging = null;
       }
 
       function alignEditorSpawn() {
@@ -896,6 +898,98 @@
         const index = findMeteorIndexNear(x, y, 1.2);
         editorState.selectedMeteor = index;
         return index;
+      }
+
+      function clampMeteorSpawnPosition(meteor) {
+        if (!meteor || !meteor.spawn) return;
+        meteor.spawn.x = clamp(meteor.spawn.x, 0, terrain.width);
+        const camYEditor = editorState.camY != null ? editorState.camY : (camY != null ? camY : height * 0.65);
+        const viewTop = camYEditor - height / 2;
+        const minSpawnY = Math.min(-METEOR_SPAWN_ABOVE_MARGIN, viewTop - METEOR_SPAWN_ABOVE_MARGIN);
+        meteor.spawn.y = Math.min(meteor.spawn.y, minSpawnY);
+      }
+
+      function clampMeteorTargetPosition(meteor) {
+        if (!meteor || !meteor.target) return;
+        meteor.target.x = clamp(meteor.target.x, 0, terrain.width);
+        const maxY = terrain.height + 400;
+        meteor.target.y = clamp(meteor.target.y, -METEOR_SPAWN_ABOVE_MARGIN, maxY);
+      }
+
+      function projectPointOnSegment(px, py, ax, ay, bx, by) {
+        const abx = bx - ax;
+        const aby = by - ay;
+        const abLenSq = abx * abx + aby * aby;
+        if (abLenSq <= 0.000001) {
+          return { x: ax, y: ay, t: 0 };
+        }
+        let t = ((px - ax) * abx + (py - ay) * aby) / abLenSq;
+        t = Math.max(0, Math.min(1, t));
+        return { x: ax + abx * t, y: ay + aby * t, t };
+      }
+
+      function pickMeteorHandleAt(x, y) {
+        const meteors = ensureEditorMeteors();
+        if (!meteors.length) return null;
+        const handleRadius = 36;
+        const pathRadius = 26;
+        let best = null;
+        const consider = (candidate) => {
+          if (!candidate) return;
+          if (!best) {
+            best = candidate;
+            return;
+          }
+          if (candidate.priority < best.priority) {
+            best = candidate;
+            return;
+          }
+          if (candidate.priority === best.priority && candidate.dist < best.dist) {
+            best = candidate;
+          }
+        };
+        for (let i = 0; i < meteors.length; i++) {
+          const meteor = meteors[i];
+          const spawnDist = Math.hypot(x - meteor.spawn.x, y - meteor.spawn.y);
+          if (spawnDist <= handleRadius) {
+            consider({
+              type: 'meteor',
+              index: i,
+              handle: 'spawn',
+              dist: spawnDist,
+              priority: 0,
+              offsetX: meteor.spawn.x - x,
+              offsetY: meteor.spawn.y - y,
+            });
+          }
+          const targetDist = Math.hypot(x - meteor.target.x, y - meteor.target.y);
+          if (targetDist <= handleRadius) {
+            consider({
+              type: 'meteor',
+              index: i,
+              handle: 'target',
+              dist: targetDist,
+              priority: 0,
+              offsetX: meteor.target.x - x,
+              offsetY: meteor.target.y - y,
+            });
+          }
+          const projection = projectPointOnSegment(x, y, meteor.spawn.x, meteor.spawn.y, meteor.target.x, meteor.target.y);
+          const pathDist = Math.hypot(x - projection.x, y - projection.y);
+          if (pathDist <= pathRadius && projection.t > 0.08 && projection.t < 0.92) {
+            consider({
+              type: 'meteor',
+              index: i,
+              handle: 'path',
+              dist: pathDist,
+              priority: 1,
+              startPointer: { x, y },
+              initialSpawn: { ...meteor.spawn },
+              initialTarget: { ...meteor.target },
+            });
+          }
+        }
+        return best;
       }
 
       function adjustSelectedMeteor(mutator) {
@@ -1604,11 +1698,18 @@ let camY = null;
             'Left drag: add terrain (hold Alt to carve)',
             `Mouse wheel or 1-4: select ${placementLabel}`,
           ];
-          if (option === 'blackHole') {
+          if (option === 'spawn') {
+            lines.push('Drag: reposition the spawn point');
+          } else if (option === 'landing') {
+            lines.push('Drag: slide the landing zone');
+          } else if (option === 'blackHole') {
             clickInstruction = 'Click: place black hole (Alt + click removes one)';
+            lines.push('Drag: move the nearest black hole');
           } else if (option === 'meteor') {
             clickInstruction = 'Click + drag: aim meteor (release to confirm)';
             lines.push('Alt + click: delete nearest meteor');
+            lines.push('Drag start/end: adjust spawn or impact');
+            lines.push('Drag path: move the entire meteor');
             lines.push('[/ ] radius  |  -/ = speed');
             lines.push(`,/ . warning lead  |  ;/' (apostrophe) start time`);
             lines.push('Select a meteor or defaults in the panel to edit timing, warning, speed, and size.');
@@ -1915,16 +2016,35 @@ let camY = null;
         const world = screenToWorld(e.offsetX, e.offsetY);
         const option = editorState.placementOptions[editorState.placementIndex];
         editorState.cursorWorld = { ...world };
-        if (option === 'blackHole') {
-          if (e.altKey) {
-            editorRemoveBlackHole(world.x, world.y);
-          } else {
-            editorPlaceBlackHole(world.x, world.y);
-          }
+        editorState.dragging = null;
+        const resetPainting = () => {
           editorState.isPainting = false;
           editorState.hasMoved = false;
           editorState.pendingPaintStart = null;
           editorState.lastPointer = null;
+        };
+        if (option === 'blackHole') {
+          if (e.altKey) {
+            editorRemoveBlackHole(world.x, world.y);
+          } else {
+            const hole = findBlackHoleNear(world.x, world.y, 1.15);
+            if (hole) {
+              const holes = ensureEditorBlackHoles();
+              const index = holes.indexOf(hole);
+              if (index !== -1) {
+                editorState.dragging = {
+                  type: 'blackHole',
+                  index,
+                  offsetX: hole.x - world.x,
+                  offsetY: hole.y - world.y,
+                };
+              }
+            }
+            if (!editorState.dragging) {
+              editorPlaceBlackHole(world.x, world.y);
+            }
+          }
+          resetPainting();
           return;
         }
         if (option === 'meteor') {
@@ -1935,15 +2055,67 @@ let camY = null;
             editorCancelPendingMeteor();
             return;
           }
+          const handle = pickMeteorHandleAt(world.x, world.y);
+          if (handle) {
+            const meteors = ensureEditorMeteors();
+            const meteor = meteors[handle.index];
+            if (meteor) {
+              editorState.selectedMeteor = handle.index;
+              editorCancelPendingMeteor();
+              editorState.isPlacingMeteor = false;
+              editorState.pendingMeteor = null;
+              editorState.dragging = {
+                type: 'meteor',
+                index: handle.index,
+                handle: handle.handle,
+                offsetX: handle.offsetX || 0,
+                offsetY: handle.offsetY || 0,
+                startPointer: handle.startPointer ? { ...handle.startPointer } : { ...world },
+                initialSpawn: handle.initialSpawn ? { ...handle.initialSpawn } : { ...meteor.spawn },
+                initialTarget: handle.initialTarget ? { ...handle.initialTarget } : { ...meteor.target },
+              };
+              updateEditorOverlay();
+            }
+            resetPainting();
+            return;
+          }
           const selected = findMeteorIndexNear(world.x, world.y, 1.3);
           if (selected !== -1) {
             editorState.selectedMeteor = selected;
             editorCancelPendingMeteor();
             updateEditorOverlay();
+            resetPainting();
             return;
           }
           editorStartMeteorPlacement(world.x, world.y);
           return;
+        }
+        if (option === 'spawn') {
+          const spawnDist = Math.hypot(world.x - editorState.spawn.x, world.y - editorState.spawn.y);
+          if (spawnDist <= 40) {
+            editorState.dragging = {
+              type: 'spawn',
+              offsetX: editorState.spawn.x - world.x,
+              offsetY: editorState.spawn.y - world.y,
+            };
+            resetPainting();
+            return;
+          }
+        } else if (option === 'landing') {
+          const margin = 20;
+          const padCenterX = pad.x + pad.w / 2;
+          const padCenterY = pad.y + pad.h / 2;
+          const withinX = world.x >= pad.x - margin && world.x <= pad.x + pad.w + margin;
+          const withinY = world.y >= pad.y - margin && world.y <= pad.y + pad.h + margin;
+          if (withinX && withinY) {
+            editorState.dragging = {
+              type: 'landing',
+              offsetX: padCenterX - world.x,
+              offsetY: padCenterY - world.y,
+            };
+            resetPainting();
+            return;
+          }
         }
         editorState.isPainting = true;
         editorState.hasMoved = false;
@@ -1956,6 +2128,86 @@ let camY = null;
         if (appMode !== APP_MODE.EDITOR) return;
         const world = screenToWorld(e.offsetX, e.offsetY);
         editorState.cursorWorld = { ...world };
+        const dragging = editorState.dragging;
+        if (dragging) {
+          if (dragging.type === 'spawn') {
+            const nextX = world.x + dragging.offsetX;
+            const nextY = world.y + dragging.offsetY;
+            editorPlaceSpawn(nextX, nextY);
+            terrain.dirtyRender = true;
+            return;
+          }
+          if (dragging.type === 'landing') {
+            const centerX = world.x + dragging.offsetX;
+            const centerY = world.y + dragging.offsetY;
+            editorPlaceLanding(centerX, centerY);
+            terrain.dirtyRender = true;
+            return;
+          }
+          if (dragging.type === 'blackHole') {
+            const holes = ensureEditorBlackHoles();
+            if (dragging.index >= 0 && dragging.index < holes.length) {
+              const hole = holes[dragging.index];
+              const margin = BLACK_HOLE_EVENT_RADIUS + terrain.cellSize;
+              let px = clamp(world.x + dragging.offsetX, margin, Math.max(margin, terrain.width - margin));
+              let py = clamp(world.y + dragging.offsetY, margin, Math.max(margin, terrain.height - margin));
+              const penetration = resolvePenetrationAt(px, py);
+              if (penetration.depth > 0.5) {
+                px += penetration.normal.x * (penetration.depth + terrain.cellSize * 0.5);
+                py += penetration.normal.y * (penetration.depth + terrain.cellSize * 0.5);
+                px = clamp(px, margin, Math.max(margin, terrain.width - margin));
+                py = clamp(py, margin, Math.max(margin, terrain.height - margin));
+              }
+              if (!isSolidWorld(px, py)) {
+                let blocked = false;
+                for (let i = 0; i < holes.length; i++) {
+                  if (i === dragging.index) continue;
+                  const other = holes[i];
+                  const dist = Math.hypot(other.x - px, other.y - py);
+                  if (dist < BLACK_HOLE_MIN_SPACING) {
+                    blocked = true;
+                    break;
+                  }
+                }
+                if (!blocked) {
+                  hole.x = px;
+                  hole.y = py;
+                  terrain.blackHoles = holes;
+                  editorState.blackHoles = holes;
+                  terrain.dirtyRender = true;
+                }
+              }
+            }
+            return;
+          }
+          if (dragging.type === 'meteor') {
+            const meteors = ensureEditorMeteors();
+            if (dragging.index >= 0 && dragging.index < meteors.length) {
+              const meteor = meteors[dragging.index];
+              if (dragging.handle === 'spawn') {
+                meteor.spawn.x = world.x + dragging.offsetX;
+                meteor.spawn.y = world.y + dragging.offsetY;
+                clampMeteorSpawnPosition(meteor);
+              } else if (dragging.handle === 'target') {
+                meteor.target.x = world.x + dragging.offsetX;
+                meteor.target.y = world.y + dragging.offsetY;
+              } else if (dragging.handle === 'path') {
+                const dx = world.x - dragging.startPointer.x;
+                const dy = world.y - dragging.startPointer.y;
+                meteor.spawn.x = dragging.initialSpawn.x + dx;
+                meteor.spawn.y = dragging.initialSpawn.y + dy;
+                meteor.target.x = dragging.initialTarget.x + dx;
+                meteor.target.y = dragging.initialTarget.y + dy;
+                clampMeteorSpawnPosition(meteor);
+              }
+              clampMeteorTargetPosition(meteor);
+              terrain.meteors = meteors;
+              editorState.meteors = meteors;
+              terrain.dirtyRender = true;
+            }
+            return;
+          }
+        }
         const option = editorState.placementOptions[editorState.placementIndex];
         if (option === 'meteor') {
           if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
@@ -2005,6 +2257,24 @@ let camY = null;
         if (appMode !== APP_MODE.EDITOR) return;
         if (e.button !== 0) return;
         const world = screenToWorld(e.offsetX, e.offsetY);
+        if (editorState.dragging) {
+          const dragging = editorState.dragging;
+          editorState.dragging = null;
+          if (dragging.type === 'meteor') {
+            const meteors = ensureEditorMeteors();
+            if (dragging.index >= 0 && dragging.index < meteors.length) {
+              const meteor = meteors[dragging.index];
+              clampMeteorSpawnPosition(meteor);
+              clampMeteorTargetPosition(meteor);
+              terrain.meteors = meteors;
+              editorState.meteors = meteors;
+            }
+            updateEditorOverlay();
+          } else if (dragging.type === 'blackHole') {
+            terrain.blackHoles = ensureEditorBlackHoles();
+          }
+          return;
+        }
         const option = editorState.placementOptions[editorState.placementIndex];
         if (option === 'meteor') {
           if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
@@ -2019,6 +2289,9 @@ let camY = null;
       canvas.addEventListener('mouseleave', () => {
         if (appMode !== APP_MODE.EDITOR) return;
         editorState.cursorWorld = null;
+        if (editorState.dragging) {
+          editorState.dragging = null;
+        }
         if (editorState.isPlacingMeteor) {
           editorCancelPendingMeteor();
         }
