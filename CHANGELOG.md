@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Touch HUD for mobile and other coarse-pointer devices with virtual thrust/rotate/bomb buttons and a toggle to force controls on or off.
 - Thruster dust now spawns where the exhaust ray meets the terrain, matching lander tilt.
 - Added oversized "Awesome Levels" with pronounced peaks, valleys, and hidden landing pads that require exploration between attempts.
 - Start menu with a custom level editor: sculpt (or Alt-carve) voxel terrain, place spawn/landing zones, and press R to flight-test creations—including pads tucked inside caverns—before returning to editing.

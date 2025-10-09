@@ -27,6 +27,88 @@
       background: transparent;
       flex-shrink: 0;
     }
+    #gameShell {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      max-width: 100vw;
+    }
+    #touchControls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 18px;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 6;
+      gap: 28px;
+    }
+    #touchControls.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #touchControls .touch-cluster {
+      display: flex;
+      gap: 12px;
+    }
+    #touchControls .touch-cluster.action {
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    #touchControls button {
+      pointer-events: auto;
+      min-width: 68px;
+      min-height: 68px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.4);
+      background: rgba(15, 25, 45, 0.75);
+      color: #f5f9ff;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      touch-action: manipulation;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+      transition: transform 0.1s ease, background 0.1s ease, border-color 0.1s ease;
+    }
+    #touchControls button:active,
+    #touchControls button.is-pressed {
+      transform: scale(0.95);
+      background: rgba(29, 46, 76, 0.9);
+      border-color: rgba(255, 255, 255, 0.7);
+    }
+    #touchToggle {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      padding: 8px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 999px;
+      background: rgba(15, 25, 45, 0.7);
+      color: #f0f6ff;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      z-index: 11;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    #touchToggle:focus-visible {
+      outline: 2px solid #8fdfff;
+      outline-offset: 2px;
+    }
+    #touchToggle.toggle-hidden {
+      display: none;
+    }
     #info {
       position: absolute;
       top: 10px;
@@ -165,7 +247,20 @@
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="600" height="400"></canvas>
+  <div id="gameShell">
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div id="touchControls" class="hidden" aria-hidden="true">
+      <div class="touch-cluster rotate">
+        <button type="button" data-key="ArrowLeft" aria-label="Rotate left">Left</button>
+        <button type="button" data-key="ArrowRight" aria-label="Rotate right">Right</button>
+      </div>
+      <div class="touch-cluster action">
+        <button type="button" data-key="ArrowUp" aria-label="Main thruster">Thrust</button>
+        <button type="button" data-key="Space" data-action="bomb" aria-label="Drop bomb">Bomb</button>
+      </div>
+    </div>
+  </div>
+  <button id="touchToggle" class="hidden" type="button" aria-pressed="false">Touch Controls</button>
   <div id="info"></div>
   <div id="startMenu">
     <h1>Moon Lander</h1>
@@ -181,6 +276,21 @@
       const startMenu = document.getElementById('startMenu');
       const menuPlayBtn = document.getElementById('menuPlay');
       const menuEditorBtn = document.getElementById('menuEditor');
+      const touchControls = document.getElementById('touchControls');
+      const touchToggle = document.getElementById('touchToggle');
+
+      const TOUCH_PREF_KEY = 'moonlander.touchControls';
+      let manualTouchPreference = null;
+      let wantsTouchControls = false;
+      let touchControlsVisible = false;
+      const coarsePointerQuery = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
+
+      const activeTouchPointers = new Map();
+      const virtualKeyCounts = new Map();
+      const physicalKeyState = {};
+
+      const TOUCH_CONTROL_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
+
       const editorPanel = document.getElementById('editorPanel');
       let width = canvas.width;
       let height = canvas.height;
@@ -198,6 +308,248 @@
       const MAX_VIEW_HEIGHT = 720;
       const MIN_VIEW_WIDTH = 600;
       const MIN_VIEW_HEIGHT = 400;
+
+      function computeDefaultTouchPreference() {
+        if (coarsePointerQuery && typeof coarsePointerQuery.matches === 'boolean' && coarsePointerQuery.matches) {
+          return true;
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) {
+          return true;
+        }
+        if (window.matchMedia) {
+          try {
+            const fine = window.matchMedia('(pointer: fine)');
+            if (fine && fine.matches) {
+              return false;
+            }
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        return 'ontouchstart' in window;
+      }
+
+      function updateTouchToggleLabel() {
+        if (!touchToggle) return;
+        const auto = manualTouchPreference === null;
+        const stateLabel = auto
+          ? (wantsTouchControls ? 'Auto (On)' : 'Auto (Off)')
+          : (manualTouchPreference === 'on' ? 'On' : 'Off');
+        touchToggle.textContent = `Touch HUD: ${stateLabel}`;
+        touchToggle.setAttribute('aria-pressed', wantsTouchControls ? 'true' : 'false');
+        touchToggle.classList.remove('hidden');
+      }
+
+      function setTouchControlsVisibility(shouldShow) {
+        const show = !!shouldShow && wantsTouchControls;
+        if (show === touchControlsVisible) return;
+        const wasVisible = touchControlsVisible;
+        touchControlsVisible = show;
+        if (!touchControls) return;
+        if (show) {
+          touchControls.classList.remove('hidden');
+          touchControls.classList.add('visible');
+          touchControls.setAttribute('aria-hidden', 'false');
+        } else {
+          touchControls.classList.remove('visible');
+          touchControls.classList.add('hidden');
+          touchControls.setAttribute('aria-hidden', 'true');
+          if (wasVisible) {
+            clearVirtualTouchState();
+          }
+        }
+        if (typeof resizeCanvas === 'function') {
+          resizeCanvas();
+        }
+      }
+
+      function refreshTouchControlsPreference() {
+        const previous = wantsTouchControls;
+        if (manualTouchPreference === 'on') {
+          wantsTouchControls = true;
+        } else if (manualTouchPreference === 'off') {
+          wantsTouchControls = false;
+        } else {
+          wantsTouchControls = computeDefaultTouchPreference();
+        }
+        updateTouchToggleLabel();
+        if (!wantsTouchControls && touchControlsVisible) {
+          setTouchControlsVisibility(false);
+        } else if (wantsTouchControls && previous !== wantsTouchControls) {
+          updateTouchControlsForMode();
+        }
+        return previous !== wantsTouchControls;
+      }
+
+      function syncCombinedKeyState(key) {
+        const virtualCount = virtualKeyCounts.get(key) || 0;
+        const physicalDown = !!physicalKeyState[key];
+        const shouldBeDown = virtualCount > 0 || physicalDown;
+        if (shouldBeDown) {
+          keys[key] = true;
+        } else if (keys[key]) {
+          keys[key] = false;
+        }
+      }
+
+      function incrementVirtualKey(key) {
+        const current = virtualKeyCounts.get(key) || 0;
+        virtualKeyCounts.set(key, current + 1);
+        keys[key] = true;
+      }
+
+      function decrementVirtualKey(key) {
+        const current = virtualKeyCounts.get(key) || 0;
+        if (current <= 1) {
+          virtualKeyCounts.delete(key);
+        } else {
+          virtualKeyCounts.set(key, current - 1);
+        }
+        syncCombinedKeyState(key);
+      }
+
+      function clearVirtualTouchState() {
+        activeTouchPointers.clear();
+        virtualKeyCounts.clear();
+        const buttons = touchControls ? touchControls.querySelectorAll('button.is-pressed') : null;
+        if (buttons) {
+          buttons.forEach(btn => btn.classList.remove('is-pressed'));
+        }
+        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].forEach((key) => syncCombinedKeyState(key));
+      }
+
+      function resetControlKeyState() {
+        TOUCH_CONTROL_KEYS.forEach((key) => {
+          physicalKeyState[key] = false;
+          if (keys[key]) {
+            keys[key] = false;
+          }
+        });
+      }
+
+      function updateTouchControlsForMode() {
+        const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        setTouchControlsVisibility(gameplayMode);
+        if (touchToggle) {
+          if (appMode === APP_MODE.EDITOR) {
+            touchToggle.classList.add('toggle-hidden');
+          } else {
+            touchToggle.classList.remove('toggle-hidden');
+          }
+        }
+      }
+
+      function setManualTouchPreference(value) {
+        manualTouchPreference = value;
+        try {
+          if (value === null) {
+            window.localStorage.removeItem(TOUCH_PREF_KEY);
+          } else {
+            window.localStorage.setItem(TOUCH_PREF_KEY, value);
+          }
+        } catch (_) {
+          /* storage can fail (private mode) */
+        }
+        refreshTouchControlsPreference();
+      }
+
+      function cycleTouchPreference() {
+        if (manualTouchPreference === 'on') {
+          setManualTouchPreference('off');
+        } else if (manualTouchPreference === 'off') {
+          setManualTouchPreference(null);
+        } else {
+          setManualTouchPreference('on');
+        }
+      }
+
+      try {
+        const savedPref = window.localStorage.getItem(TOUCH_PREF_KEY);
+        if (savedPref === 'on' || savedPref === 'off') {
+          manualTouchPreference = savedPref;
+        }
+      } catch (_) {
+        manualTouchPreference = null;
+      }
+      if (touchToggle) {
+        touchToggle.addEventListener('click', cycleTouchPreference);
+        touchToggle.setAttribute('title', 'Tap to cycle: On -> Off -> Auto');
+      }
+      function releaseVirtualPointer(pointerId) {
+        const state = activeTouchPointers.get(pointerId);
+        if (!state) return;
+        activeTouchPointers.delete(pointerId);
+        const { key, element } = state;
+        if (element && element.classList.contains('is-pressed')) {
+          element.classList.remove('is-pressed');
+        }
+        if (element && typeof element.releasePointerCapture === 'function') {
+          try {
+            element.releasePointerCapture(pointerId);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        decrementVirtualKey(key);
+      }
+
+      function handleVirtualPointerDown(event) {
+        if (!touchControlsVisible) return;
+        const button = event.target instanceof Element ? event.target.closest('button[data-key]') : null;
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const key = button.dataset.key;
+        if (!key) return;
+        const pointerId = event.pointerId;
+        if (activeTouchPointers.has(pointerId)) {
+          releaseVirtualPointer(pointerId);
+        }
+        activeTouchPointers.set(pointerId, { key, element: button });
+        button.classList.add('is-pressed');
+        if (typeof button.setPointerCapture === 'function') {
+          try {
+            button.setPointerCapture(pointerId);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        incrementVirtualKey(key);
+        if (button.dataset.action === 'bomb' || key === 'Space') {
+          if (typeof canDropBomb === 'function') {
+            dropBomb();
+          }
+        }
+      }
+
+      function handleVirtualPointerEnd(event) {
+        releaseVirtualPointer(event.pointerId);
+      }
+
+      if (touchControls) {
+        touchControls.addEventListener('pointerdown', handleVirtualPointerDown);
+        touchControls.addEventListener('pointerup', handleVirtualPointerEnd);
+        touchControls.addEventListener('pointercancel', handleVirtualPointerEnd);
+        touchControls.addEventListener('pointerleave', handleVirtualPointerEnd);
+        touchControls.addEventListener('contextmenu', (event) => event.preventDefault());
+      }
+
+      if (coarsePointerQuery) {
+        const listener = () => {
+          if (manualTouchPreference === null) {
+            refreshTouchControlsPreference();
+            updateTouchControlsForMode();
+          }
+        };
+        if (typeof coarsePointerQuery.addEventListener === 'function') {
+          coarsePointerQuery.addEventListener('change', listener);
+        } else if (typeof coarsePointerQuery.addListener === 'function') {
+          coarsePointerQuery.addListener(listener);
+        }
+      }
+
+      refreshTouchControlsPreference();
+      updateTouchControlsForMode();
 
       // --- Procedural terrain (peaks, valleys, and a flat pad segment) ---
       const levels = [
@@ -1334,8 +1686,9 @@ let camX = null;
 let camY = null;
 
       function resizeCanvas() {
+        const hudReserve = touchControlsVisible ? Math.min(window.innerHeight * 0.2, 180) : 0;
         const availWidth = window.innerWidth * 0.9;
-        const availHeight = window.innerHeight * 0.9;
+        const availHeight = Math.max(window.innerHeight * 0.9 - hudReserve, 0);
         const maxWidth = Math.min(availWidth, MAX_VIEW_WIDTH);
         const maxHeight = Math.min(availHeight, MAX_VIEW_HEIGHT);
 
@@ -1348,7 +1701,7 @@ let camY = null;
         }
 
         const minWidthCap = Math.min(MIN_VIEW_WIDTH, window.innerWidth);
-        const minHeightCap = Math.min(MIN_VIEW_HEIGHT, window.innerHeight);
+        const minHeightCap = Math.min(MIN_VIEW_HEIGHT, Math.max(window.innerHeight - hudReserve, 0));
 
         if (targetWidth < minWidthCap) {
           targetWidth = minWidthCap;
@@ -1786,6 +2139,7 @@ let camY = null;
 
       function enterMenu() {
         appMode = APP_MODE.MENU;
+        updateTouchControlsForMode();
         editorState.active = false;
         startMenu.classList.remove('hidden');
         updateEditorOverlay();
@@ -1795,10 +2149,12 @@ let camY = null;
         for (const key of Object.keys(keys)) {
           if (keys[key]) keys[key] = false;
         }
+        resetControlKeyState();
       }
 
       function enterPlay() {
         appMode = APP_MODE.PLAY;
+        updateTouchControlsForMode();
         startMenu.classList.add('hidden');
         editorState.active = false;
         generateTerrain(0);
@@ -1808,6 +2164,7 @@ let camY = null;
 
       function enterEditor(resetTerrain = false) {
         appMode = APP_MODE.EDITOR;
+        updateTouchControlsForMode();
         startMenu.classList.add('hidden');
         initEditorTerrain(resetTerrain);
         resetGame(false, {
@@ -1862,6 +2219,7 @@ let camY = null;
           alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
         }
         appMode = APP_MODE.TEST;
+        updateTouchControlsForMode();
         startMenu.classList.add('hidden');
         exploded = false;
         terrain.meteors = cloneMeteors(editorState.meteors);
@@ -1904,6 +2262,7 @@ let camY = null;
       window.addEventListener('keydown', (e) => {
         audio.unlock();
         const key = e.key === 'Spacebar' ? ' ' : e.key;
+        const normalizedKey = key === ' ' ? 'Space' : key;
         const isEditorInput = editorPanel.contains(e.target) && e.target instanceof HTMLInputElement;
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
@@ -1926,6 +2285,12 @@ let camY = null;
           }
         }
         keys[key] = true;
+        if (TOUCH_CONTROL_KEYS.has(normalizedKey)) {
+          physicalKeyState[normalizedKey] = true;
+          if (normalizedKey !== key) {
+            keys[normalizedKey] = true;
+          }
+        }
         const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
         if ((key === ' ' || key === 'Space') && gameplayMode) {
           if (!e.repeat) {
@@ -2046,14 +2411,26 @@ let camY = null;
       });
       window.addEventListener('keyup', (e) => {
         const key = e.key === 'Spacebar' ? ' ' : e.key;
+        const normalizedKey = key === ' ' ? 'Space' : key;
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
-          keys.Space = false;
         }
-        keys[key] = false;
+        if (TOUCH_CONTROL_KEYS.has(normalizedKey)) {
+          physicalKeyState[normalizedKey] = false;
+          if (normalizedKey !== key && keys[key]) {
+            keys[key] = false;
+          }
+          syncCombinedKeyState(normalizedKey);
+        } else {
+          keys[key] = false;
+        }
       });
       window.addEventListener('mousedown', () => audio.unlock());
       window.addEventListener('touchstart', () => audio.unlock(), { passive: true });
+      window.addEventListener('blur', () => {
+        resetControlKeyState();
+        clearVirtualTouchState();
+      });
 
       window.addEventListener('wheel', (e) => {
         if (appMode !== APP_MODE.EDITOR) return;
@@ -2414,6 +2791,7 @@ let camY = null;
         for (const key of Object.keys(keys)) {
           if (keys[key]) keys[key] = false;
         }
+        clearVirtualTouchState();
       }
 
       function spawnExplosion(x, y, baseVx, baseVy) {
@@ -4348,7 +4726,12 @@ let camY = null;
         requestAnimationFrame(loop);
       }
 
-      window.addEventListener('resize', resizeCanvas);
+      window.addEventListener('resize', () => {
+        resizeCanvas();
+        if (manualTouchPreference === null) {
+          refreshTouchControlsPreference();
+        }
+      });
       resizeCanvas();
       enterMenu();
       updateEditorOverlay();
