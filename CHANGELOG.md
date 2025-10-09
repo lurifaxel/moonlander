@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enlarged and centered the playfield; canvas now scales with the browser up to 1280x720 for a more immersive layout.
 - Level editor meteors feature clickable timing/speed/size inputs, digit hotkeys (1–4) for tool selection, and always spawn from above the visible playfield.
 - Level editor entities (spawn point, landing zone, black holes, and meteor handles) can now be dragged to reposition or retarget hazards directly on the canvas.
+- Mobile touch HUD restyled into a SNES-inspired control bar with start/menu access, thrust/bomb pairing, and post-level restart/next menus (plus `N` for next level alongside `R` restart).
 
 ## [0.1.0] - 2025-10-04
 
