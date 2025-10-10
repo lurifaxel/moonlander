@@ -40,35 +40,29 @@
       right: 0;
       bottom: 0;
       display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      padding: 24px 20px calc(20px + env(safe-area-inset-bottom));
+      justify-content: center;
+      padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
       pointer-events: none;
       opacity: 0;
-      transform: translateY(18px);
+      transform: translateY(12px);
       transition: opacity 0.2s ease, transform 0.2s ease;
       z-index: 6;
-      background: #000;
-      min-height: clamp(200px, 32vh, 320px);
+      background: rgba(0, 0, 0, 0.88);
+      box-shadow: 0 -12px 38px rgba(0, 0, 0, 0.65);
     }
     #touchControls.visible {
       opacity: 1;
       transform: translateY(0);
       pointer-events: auto;
     }
-    #touchControls .touch-spacer {
-      flex: 1 1 auto;
-      pointer-events: none;
-    }
     #touchControls .touch-row {
       display: flex;
       align-items: flex-end;
       justify-content: space-between;
-      gap: 24px;
+      gap: 20px;
       pointer-events: none;
-      max-width: 720px;
-      margin: 0 auto;
       width: 100%;
+      max-width: 720px;
     }
     #touchControls .touch-row > * {
       pointer-events: auto;
@@ -76,119 +70,111 @@
     #touchControls .touch-cluster {
       display: flex;
       align-items: center;
-      gap: 18px;
+      gap: 14px;
     }
     #touchControls .touch-cluster.action {
-      gap: 16px;
+      gap: 14px;
     }
     #touchControls button {
       pointer-events: auto;
       cursor: pointer;
       touch-action: manipulation;
-      border: none;
-      background: none;
-      padding: 0;
-      font: inherit;
-      color: inherit;
-    }
-    #touchControls .action button {
-      min-width: 84px;
-      min-height: 84px;
-      border-radius: 999px;
-      background: radial-gradient(circle at 30% 30%, #f5f9ff 0%, #d6e5ff 38%, #6b88ff 90%);
-      box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.28), 0 10px 22px rgba(0, 0, 0, 0.55);
-      color: #1a2240;
-      font-size: 14px;
-      font-weight: 700;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(18, 26, 40, 0.65);
+      color: #f5f8ff;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
-      padding: 12px 18px;
-      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      min-width: 72px;
+      min-height: 72px;
+      border-radius: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 16px;
+      transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
     }
-    #touchControls .action button.bomb-button {
-      background: radial-gradient(circle at 30% 30%, #ffd9e3 0%, #ffadc7 45%, #c42f5f 100%);
-      color: #380415;
-    }
-    #touchControls .action button:active,
-    #touchControls .action button.is-pressed {
-      transform: translateY(3px);
-      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.32), 0 4px 12px rgba(0, 0, 0, 0.5);
+    #touchControls button:active,
+    #touchControls button.is-pressed {
+      transform: scale(0.95);
+      background: rgba(28, 38, 56, 0.78);
+      border-color: rgba(255, 255, 255, 0.6);
     }
     #touchControls .menu-button {
-      min-width: 110px;
-      min-height: 44px;
-      border-radius: 28px;
-      background: linear-gradient(180deg, #d8d8dd 0%, #9b9ba5 100%);
-      color: #1f1f2d;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.35), 0 8px 14px rgba(0, 0, 0, 0.5);
-      padding: 10px 18px;
-      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      min-width: 108px;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      padding: 14px 20px;
     }
-    #touchControls .menu-button:active,
-    #touchControls .menu-button.is-pressed {
-      transform: translateY(3px);
-      box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.45);
+    #touchControls .action button {
+      min-width: 78px;
+      min-height: 78px;
+      border-radius: 999px;
     }
     .touch-cluster.rotate {
       position: relative;
-      width: 164px;
-      height: 164px;
-      flex: 0 0 164px;
+      width: 136px;
+      height: 136px;
+      flex: 0 0 136px;
     }
     .touch-cluster.rotate::before {
       content: '';
       position: absolute;
-      inset: 24px;
-      background: linear-gradient(180deg, #d4d8e7 0%, #8c91ad 100%);
-      box-shadow: inset 0 -10px 0 rgba(0, 0, 0, 0.4), 0 20px 34px rgba(0, 0, 0, 0.65);
-      clip-path: polygon(40% 0%, 60% 0%, 60% 40%, 100% 40%, 100% 60%, 60% 60%, 60% 100%, 40% 100%, 40% 60%, 0% 60%, 0% 40%, 40% 40%);
-      border-radius: 26px;
-      border: 4px solid rgba(54, 58, 78, 0.9);
+      inset: 20px;
+      border-radius: 28px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(18, 26, 40, 0.7);
+      clip-path: polygon(38% 0%, 62% 0%, 62% 38%, 100% 38%, 100% 62%, 62% 62%, 62% 100%, 38% 100%, 38% 62%, 0% 62%, 0% 38%, 38% 38%);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
     .touch-cluster.rotate::after {
       content: '';
       position: absolute;
       left: 50%;
       top: 50%;
-      width: 46px;
-      height: 46px;
+      width: 40px;
+      height: 40px;
       transform: translate(-50%, -50%);
       border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #f4f6ff 0%, #8c92af 85%);
-      box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.45), 0 4px 12px rgba(0, 0, 0, 0.45);
-      border: 2px solid rgba(58, 62, 82, 0.9);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      background: rgba(12, 18, 30, 0.8);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
     }
     .touch-cluster.rotate button {
       position: absolute;
-      top: 24px;
-      bottom: 24px;
+      top: 20px;
+      bottom: 20px;
       width: 50%;
-      background-color: transparent;
+      min-width: 0;
+      min-height: 0;
+      border: none;
+      background: none;
+      padding: 0;
+      border-radius: 0;
     }
     .touch-cluster.rotate button.left {
-      left: 24px;
+      left: 20px;
     }
     .touch-cluster.rotate button.right {
-      right: 24px;
+      right: 20px;
     }
     .touch-cluster.rotate button::before {
       content: '';
       position: absolute;
       inset: 0;
-      background: rgba(255, 255, 255, 0);
       transition: background 0.12s ease;
-      clip-path: polygon(40% 0%, 60% 0%, 60% 40%, 100% 40%, 100% 60%, 60% 60%, 60% 100%, 40% 100%, 40% 60%, 0% 60%, 0% 40%, 40% 40%);
-      border-radius: 20px;
+      clip-path: polygon(38% 0%, 62% 0%, 62% 38%, 100% 38%, 100% 62%, 62% 62%, 62% 100%, 38% 100%, 38% 62%, 0% 62%, 0% 38%, 38% 38%);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0);
     }
     .touch-cluster.rotate button.left::before {
-      transform: translateX(-20%) scaleX(1.2);
+      transform: translateX(-22%) scaleX(1.16);
     }
     .touch-cluster.rotate button.right::before {
-      transform: translateX(20%) scaleX(1.2);
+      transform: translateX(22%) scaleX(1.16);
     }
     .touch-cluster.rotate button.is-pressed::before,
     .touch-cluster.rotate button:active::before {
@@ -239,54 +225,48 @@
     .hidden {
       display: none !important;
     }
-    #startMenu,
-    #postLevelMenu {
+    .menu-overlay {
       position: absolute;
       inset: 0;
       display: flex;
-      flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 18px;
-      background: rgba(16, 20, 32, 0.92);
-      z-index: 10;
       text-align: center;
       padding: 32px 16px;
+      z-index: 10;
+    }
+    #startMenu {
+      background: rgba(16, 20, 32, 0.92);
+    }
+    #postLevelMenu {
+      background: none;
+      padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    }
+    .menu-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      width: min(320px, 100%);
+    }
+    #startMenu .menu-panel {
+      background: rgba(8, 12, 20, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 32px 28px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    }
+    #postLevelMenu .menu-panel {
+      background: rgba(8, 12, 20, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 24px 24px;
+      box-shadow: 0 18px 38px rgba(0, 0, 0, 0.4);
     }
     #startMenu h1 {
       margin: 0;
       font-size: 28px;
       letter-spacing: 1px;
-    }
-    #startMenu button {
-      min-width: 180px;
-      padding: 10px 18px;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
-      cursor: pointer;
-      background: #2ecc71;
-      color: #0b101d;
-      transition: transform 0.1s ease, background 0.1s ease;
-    }
-    #startMenu button:hover {
-      transform: translateY(-1px);
-      background: #27ae60;
-    }
-    #startMenu button.secondary {
-      background: #3498db;
-      color: #f5f9ff;
-    }
-    #startMenu button.secondary:hover {
-      background: #2b7cb3;
-    }
-    #postLevelMenu .menu-content {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 18px;
-      max-width: 320px;
-      width: 100%;
     }
     #postLevelMenu h2 {
       margin: 0;
@@ -300,33 +280,40 @@
       line-height: 1.5;
       color: rgba(255, 255, 255, 0.82);
     }
-    #postLevelMenu .menu-actions {
+    .menu-actions {
       display: flex;
       flex-direction: column;
       gap: 12px;
       width: 100%;
     }
-    #postLevelMenu button {
-      min-width: 180px;
-      padding: 10px 18px;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
+    .menu-actions button {
+      width: 100%;
+      padding: 12px 18px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(15, 22, 36, 0.7);
+      color: #f1f5ff;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       cursor: pointer;
-      background: #2ecc71;
-      color: #0b101d;
-      transition: transform 0.1s ease, background 0.1s ease;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
     }
-    #postLevelMenu button:hover {
+    .menu-actions button:hover,
+    .menu-actions button:focus-visible {
       transform: translateY(-1px);
-      background: #27ae60;
+      border-color: rgba(255, 255, 255, 0.6);
+      background: rgba(24, 34, 52, 0.85);
+      outline: none;
     }
-    #postLevelMenu button.secondary {
-      background: #3498db;
-      color: #f5f9ff;
+    .menu-actions button.secondary {
+      border-color: rgba(143, 223, 255, 0.45);
     }
-    #postLevelMenu button.secondary:hover {
-      background: #2b7cb3;
+    .menu-actions button.secondary:hover,
+    .menu-actions button.secondary:focus-visible {
+      border-color: rgba(143, 223, 255, 0.7);
+      background: rgba(26, 36, 54, 0.9);
     }
     #editorPanel {
       position: absolute;
@@ -419,7 +406,6 @@
   <div id="gameShell">
     <canvas id="gameCanvas" width="600" height="400"></canvas>
     <div id="touchControls" class="hidden" aria-hidden="true">
-      <div class="touch-spacer" aria-hidden="true"></div>
       <div class="touch-row">
         <div class="touch-cluster rotate">
           <button type="button" class="left" data-key="ArrowLeft" aria-label="Rotate left"><span class="sr-only">Rotate left</span></button>
@@ -435,18 +421,23 @@
   </div>
   <button id="touchToggle" class="hidden" type="button" aria-pressed="false">Touch Controls</button>
   <div id="info"></div>
-  <div id="startMenu">
-    <h1>Moon Lander</h1>
-    <button id="menuPlay">Play</button>
-    <button id="menuEditor" class="secondary">Create Level</button>
+  <div id="startMenu" class="menu-overlay">
+    <div class="menu-panel">
+      <h1>Moon Lander</h1>
+      <div class="menu-actions">
+        <button id="menuPlay">Play</button>
+        <button id="menuEditor" class="secondary">Create Level</button>
+      </div>
+    </div>
   </div>
-  <div id="postLevelMenu" class="hidden" aria-hidden="true">
-    <div class="menu-content">
+  <div id="postLevelMenu" class="menu-overlay hidden" aria-hidden="true">
+    <div class="menu-panel">
       <h2 id="postLevelTitle">Mission Update</h2>
       <p id="postLevelMessage"></p>
       <div class="menu-actions">
         <button id="postRestart" type="button">Restart Level</button>
         <button id="postNext" type="button" class="secondary">Next Level</button>
+        <button id="postMainMenu" type="button" class="secondary">Main Menu</button>
       </div>
     </div>
   </div>
@@ -466,12 +457,15 @@
       const postLevelMessage = document.getElementById('postLevelMessage');
       const postRestartBtn = document.getElementById('postRestart');
       const postNextBtn = document.getElementById('postNext');
+      const postMenuBtn = document.getElementById('postMainMenu');
 
       const TOUCH_PREF_KEY = 'moonlander.touchControls';
       let manualTouchPreference = null;
       let wantsTouchControls = false;
       let touchControlsVisible = false;
       let postLevelActive = false;
+      let postLevelOutcome = null;
+      let postLevelRevealTimer = null;
       const coarsePointerQuery = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
 
       const activeTouchPointers = new Map();
@@ -654,8 +648,12 @@
 
       function hidePostLevelMenu() {
         if (!postLevelMenu) return;
-        if (!postLevelActive) return;
+        if (postLevelRevealTimer) {
+          clearTimeout(postLevelRevealTimer);
+          postLevelRevealTimer = null;
+        }
         postLevelActive = false;
+        postLevelOutcome = null;
         postLevelMenu.classList.add('hidden');
         postLevelMenu.setAttribute('aria-hidden', 'true');
       }
@@ -663,9 +661,11 @@
       function showPostLevelMenu(kind, detail, upcoming) {
         if (!postLevelMenu) return;
         if (appMode !== APP_MODE.PLAY) return;
-        postLevelActive = true;
-        postLevelMenu.classList.remove('hidden');
-        postLevelMenu.setAttribute('aria-hidden', 'false');
+        if (postLevelRevealTimer) {
+          clearTimeout(postLevelRevealTimer);
+          postLevelRevealTimer = null;
+        }
+        postLevelOutcome = kind;
         if (postLevelTitle) {
           postLevelTitle.textContent = kind === 'success' ? 'Mission Complete' : 'Mission Failed';
         }
@@ -673,8 +673,25 @@
           postLevelMessage.textContent = detail || '';
         }
         if (postNextBtn) {
-          postNextBtn.textContent = upcoming ? `Next: ${upcoming}` : 'Next Level';
+          if (kind === 'success') {
+            postNextBtn.classList.remove('hidden');
+            postNextBtn.disabled = false;
+            postNextBtn.textContent = upcoming ? `Next: ${upcoming}` : 'Next Level';
+          } else {
+            postNextBtn.classList.add('hidden');
+            postNextBtn.disabled = true;
+          }
         }
+        postLevelMenu.classList.add('hidden');
+        postLevelMenu.setAttribute('aria-hidden', 'true');
+        postLevelActive = false;
+        postLevelRevealTimer = window.setTimeout(() => {
+          postLevelRevealTimer = null;
+          if (appMode !== APP_MODE.PLAY) return;
+          postLevelActive = true;
+          postLevelMenu.classList.remove('hidden');
+          postLevelMenu.setAttribute('aria-hidden', 'false');
+        }, 3000);
       }
 
       function handleMenuButtonPress() {
@@ -690,6 +707,8 @@
 
       function advanceToNextLevel() {
         if (appMode !== APP_MODE.PLAY) return;
+        if (!gameOver) return;
+        if (postLevelOutcome !== 'success') return;
         if (!Array.isArray(levels) || levels.length === 0) return;
         nextLevelIndex = (currentLevelIndex + 1) % levels.length;
         shouldRegen = true;
@@ -794,6 +813,14 @@
           audio.unlock();
           if (appMode !== APP_MODE.PLAY || !gameOver) return;
           advanceToNextLevel();
+        });
+      }
+
+      if (postMenuBtn) {
+        postMenuBtn.addEventListener('click', () => {
+          audio.unlock();
+          if (appMode !== APP_MODE.PLAY) return;
+          enterMenu();
         });
       }
 
@@ -1950,7 +1977,7 @@ let camY = null;
 
       function resizeCanvas() {
         const hudReserve = touchControlsVisible
-          ? Math.min(Math.max(window.innerHeight * 0.32, 200), 320)
+          ? Math.min(Math.max(window.innerHeight * 0.24, 140), 220)
           : 0;
         const availWidth = window.innerWidth * 0.9;
         const availHeight = Math.max(window.innerHeight * 0.9 - hudReserve, 0);
@@ -3081,7 +3108,7 @@ let camY = null;
           message = 'Test failed. Press R to retry or Esc to edit';
           hidePostLevelMenu();
         } else {
-          message = 'You Crashed! Press R to restart or N for next level';
+          message = 'You Crashed! Press R to restart or Esc for menu';
           const upcoming = levels.length > 0 ? levels[(currentLevelIndex + 1) % levels.length].name : null;
           showPostLevelMenu('failure', message, upcoming);
         }
@@ -4913,7 +4940,9 @@ let camY = null;
               shouldRegen = false;
               nextLevelIndex = (currentLevelIndex + 1) % levels.length;
               const upcoming = levels[nextLevelIndex].name;
-              message = `Nice landing! Press R to restart or N to explore ${upcoming}`;
+              message = upcoming
+                ? `Nice landing! Press R to restart or N for ${upcoming}`
+                : 'Nice landing! Press R to restart or N for the next level';
               showPostLevelMenu('success', message, upcoming);
             }
             const touchdownY = touchingFeet.length
