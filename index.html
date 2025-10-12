@@ -495,8 +495,57 @@
       z-index: 6;
       pointer-events: auto;
       text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
-    #editorPanel strong {
+    #editorPanel.collapsed {
+      padding-bottom: 10px;
+    }
+    #editorPanel.collapsed .editor-panel-body {
+      display: none;
+    }
+    #editorPanel .editor-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #editorPanel .editor-panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.72;
+    }
+    #editorPanel .editor-panel-toggle {
+      pointer-events: auto;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(18, 26, 40, 0.65);
+      color: #f0f6ff;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      padding: 4px 12px;
+      text-transform: uppercase;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    #editorPanel .editor-panel-toggle:focus-visible {
+      outline: 2px solid #8fdfff;
+      outline-offset: 2px;
+    }
+    #editorPanel .editor-panel-toggle:hover,
+    #editorPanel .editor-panel-toggle:active {
+      border-color: rgba(255, 255, 255, 0.45);
+      background: rgba(22, 32, 50, 0.8);
+    }
+    #editorPanel .editor-panel-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #editorPanel .editor-panel-body strong {
       color: #8fdfff;
       font-weight: 600;
     }
@@ -635,7 +684,13 @@
       </div>
     </div>
   </div>
-  <div id="editorPanel" class="hidden"></div>
+  <div id="editorPanel" class="hidden" aria-live="polite" aria-atomic="true" aria-hidden="true">
+    <div class="editor-panel-header">
+      <span class="editor-panel-title">Level Editor</span>
+      <button type="button" class="editor-panel-toggle" aria-expanded="true">Hide info</button>
+    </div>
+    <div class="editor-panel-body"></div>
+  </div>
   <script>
     (() => {
       const canvas = document.getElementById('gameCanvas');
@@ -661,6 +716,7 @@
         : [];
 
       let infoCollapsed = false;
+      let editorPanelCollapsed = false;
 
       function setInfoTitle(text) {
         if (infoTitle) {
@@ -701,6 +757,21 @@
         infoPanel.setAttribute('aria-hidden', 'true');
       }
 
+      function setEditorPanelTitle(text) {
+        if (editorPanelTitle) {
+          editorPanelTitle.textContent = text || 'Level Editor';
+        }
+      }
+
+      function applyEditorPanelCollapsedState() {
+        if (!editorPanel) return;
+        editorPanel.classList.toggle('collapsed', editorPanelCollapsed);
+        if (editorPanelToggle) {
+          editorPanelToggle.setAttribute('aria-expanded', (!editorPanelCollapsed).toString());
+          editorPanelToggle.textContent = editorPanelCollapsed ? 'Show info' : 'Hide info';
+        }
+      }
+
       const TOUCH_PREF_KEY = 'moonlander.touchControls';
       let manualTouchPreference = null;
       let wantsTouchControls = false;
@@ -717,6 +788,9 @@
       const TOUCH_CONTROL_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
 
       const editorPanel = document.getElementById('editorPanel');
+      const editorPanelBody = editorPanel ? editorPanel.querySelector('.editor-panel-body') : null;
+      const editorPanelToggle = editorPanel ? editorPanel.querySelector('.editor-panel-toggle') : null;
+      const editorPanelTitle = editorPanel ? editorPanel.querySelector('.editor-panel-title') : null;
       let width = canvas.width;
       let height = canvas.height;
 
@@ -1071,6 +1145,16 @@
           if (infoBody && infoBody.textContent && infoBody.textContent.length) {
             infoPanel.classList.remove('hidden');
             infoPanel.setAttribute('aria-hidden', 'false');
+          }
+        });
+      }
+      if (editorPanelToggle && editorPanel) {
+        editorPanelToggle.addEventListener('click', () => {
+          editorPanelCollapsed = !editorPanelCollapsed;
+          applyEditorPanelCollapsedState();
+          if (!editorPanelCollapsed) {
+            editorPanel.classList.remove('hidden');
+            editorPanel.setAttribute('aria-hidden', 'false');
           }
         });
       }
@@ -2006,7 +2090,11 @@
         }
       }
 
-      function updateEditorPanel(statusLines, extraHtml = '') {
+      function updateEditorPanel(statusLines, extraHtml = '', title = null) {
+        if (!editorPanel || !editorPanelBody) return;
+        if (title !== null) {
+          setEditorPanelTitle(title);
+        }
         let html = '';
         if (statusLines && statusLines.length) {
           html += statusLines.map(line => `<div>${line}</div>`).join('');
@@ -2014,7 +2102,8 @@
         if (extraHtml) {
           html += extraHtml;
         }
-        editorPanel.innerHTML = html;
+        editorPanelBody.innerHTML = html;
+        applyEditorPanelCollapsedState();
       }
 
       function updateEditorToolButtons() {
@@ -2671,56 +2760,66 @@ let camY = null;
 
       function updateEditorOverlay() {
         if (appMode === APP_MODE.EDITOR) {
-          editorPanel.classList.remove('hidden');
+          if (editorPanel) {
+            editorPanel.classList.remove('hidden');
+            editorPanel.setAttribute('aria-hidden', 'false');
+          }
           const option = editorState.placementOptions[editorState.placementIndex];
           const placementLabel = labelForPlacement(option);
-          const lines = [
-            '<strong>Level Editor</strong>',
-            'Toolbar buttons or 1-5 select tools (mouse wheel cycles).',
-          ];
+          const toolTitle = `${placementLabel} Tool`;
+          const lines = ['Toolbar buttons or 1-5 select tools (mouse wheel cycles).'];
           if (option === 'terrain') {
             lines.push('Tap or click to sculpt terrain (hold Alt to carve).');
             lines.push('Drag to paint continuous strokes; release to finish.');
           } else if (option === 'spawn') {
-            lines.push('Click: place the spawn point');
+            lines.push('Tap or click: place the spawn point');
             lines.push('Drag: reposition the spawn point');
           } else if (option === 'landing') {
-            lines.push('Click: place the landing zone');
+            lines.push('Tap or click: place the landing zone');
             lines.push('Drag: slide the landing zone');
           } else if (option === 'blackHole') {
-            lines.push('Click: place black hole (Alt + click removes one)');
+            lines.push('Tap or click: place black hole (Alt + tap/click removes one)');
             lines.push('Drag: move the nearest black hole');
           } else if (option === 'meteor') {
-            lines.push('Click + drag: aim meteor (release to confirm)');
-            lines.push('Alt + click: delete nearest meteor');
-            lines.push('Drag start/end: adjust spawn or impact');
+            lines.push('Tap + drag: aim meteor (release to confirm)');
+            lines.push('Alt + tap/click: delete nearest meteor');
+            lines.push('Drag start/end handles: adjust spawn or impact');
             lines.push('Drag path: move the entire meteor');
             lines.push('[/ ] radius  |  -/ = speed');
             lines.push(`,/ . warning lead  |  ;/' (apostrophe) start time`);
             lines.push('Select a meteor or defaults in the panel to edit timing, warning, speed, and size.');
           } else {
-            lines.push(`Click: place ${placementLabel}`);
+            lines.push(`Tap or click: place ${placementLabel}`);
           }
           lines.push('R: test this level');
           lines.push('Esc: back to menu');
           if (option === 'meteor') {
             const panelHtml = buildMeteorEditorControls();
-            updateEditorPanel(lines, panelHtml);
+            updateEditorPanel(lines, panelHtml, toolTitle);
             attachMeteorEditorEvents();
           } else {
-            updateEditorPanel(lines);
+            updateEditorPanel(lines, '', toolTitle);
           }
         } else if (appMode === APP_MODE.TEST) {
-          editorPanel.classList.remove('hidden');
-          updateEditorPanel([
-            '<strong>Test Flight</strong>',
-            'Arrow keys: fly the lander',
-            'R: restart test',
-            'Esc: return to editor',
-          ]);
+          if (editorPanel) {
+            editorPanel.classList.remove('hidden');
+            editorPanel.setAttribute('aria-hidden', 'false');
+          }
+          updateEditorPanel(
+            [
+              'Arrow keys: fly the lander',
+              'R: restart test',
+              'Esc: return to editor',
+            ],
+            '',
+            'Test Flight'
+          );
         } else {
-          editorPanel.classList.add('hidden');
-          updateEditorPanel([]);
+          if (editorPanel) {
+            editorPanel.classList.add('hidden');
+            editorPanel.setAttribute('aria-hidden', 'true');
+          }
+          updateEditorPanel([], '', null);
         }
         updateEditorToolButtons();
       }
@@ -5145,9 +5244,6 @@ let camY = null;
             `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`,
             'Status'
           );
-        } else if (appMode === APP_MODE.EDITOR) {
-          const option = editorState.placementOptions[editorState.placementIndex];
-          setInfoMessage(`Editor | Active: ${labelForPlacement(option)}`, 'Editor');
         } else {
           clearInfoMessage();
         }
