@@ -5230,9 +5230,6 @@ let camY = null;
           ctx.moveTo(cursor.x, cursor.y - 10);
           ctx.lineTo(cursor.x, cursor.y + 10);
           ctx.stroke();
-          const option = editorState.placementOptions[editorState.placementIndex];
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(labelForPlacement(option), cursor.x + 12, cursor.y - 12);
         }
         ctx.restore();
       }
