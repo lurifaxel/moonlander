@@ -16,7 +16,8 @@
     }
     body {
       display: flex;
-      justify-content: center;
+      flex-direction: column;
+      justify-content: flex-start;
       align-items: center;
       min-height: 100vh;
       overflow: hidden;
@@ -26,56 +27,459 @@
       display: block;
       background: transparent;
       flex-shrink: 0;
+      touch-action: none;
+    }
+    #gameShell {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 100vw;
+    }
+    #touchControls {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: center;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(12px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 6;
+      background: rgba(0, 0, 0, 0.9);
+      box-shadow: 0 -10px 32px rgba(0, 0, 0, 0.6);
+    }
+    #touchControls.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #touchControls .touch-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      pointer-events: none;
+      width: 100%;
+      max-width: 720px;
+    }
+    #touchControls .touch-row > * {
+      pointer-events: auto;
+    }
+    #touchControls .touch-cluster {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    #touchControls .touch-cluster.action {
+      gap: 14px;
+    }
+    #touchControls button {
+      pointer-events: auto;
+      cursor: pointer;
+      touch-action: manipulation;
+      border: 2px solid rgba(255, 255, 255, 0.32);
+      background: rgba(18, 26, 40, 0.35);
+      color: #f5f8ff;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      min-width: 64px;
+      min-height: 64px;
+      border-radius: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 14px;
+      transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+      line-height: 1;
+    }
+    #touchControls button:active,
+    #touchControls button.is-pressed {
+      transform: scale(0.95);
+      background: rgba(28, 38, 56, 0.78);
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    #touchControls .menu-button {
+      min-width: 56px;
+      min-height: 52px;
+      border-radius: 999px;
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      padding: 8px 14px;
+    }
+    #touchControls .action button {
+      min-width: 72px;
+      min-height: 72px;
+      border-radius: 999px;
+    }
+    .touch-cluster.rotate {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .touch-cluster.rotate button {
+      min-width: 64px;
+      min-height: 64px;
+      border-radius: 16px;
+      padding: 0;
+      position: relative;
+      background: rgba(18, 26, 40, 0.35);
+    }
+    .touch-cluster.rotate button::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 0;
+      height: 0;
+      transform: translate(-50%, -50%);
+      border-top: 12px solid transparent;
+      border-bottom: 12px solid transparent;
+    }
+    .touch-cluster.rotate button.left::after {
+      border-right: 18px solid rgba(255, 255, 255, 0.7);
+      margin-left: -4px;
+    }
+    .touch-cluster.rotate button.right::after {
+      border-left: 18px solid rgba(255, 255, 255, 0.7);
+      margin-left: 4px;
+    }
+    .touch-cluster.rotate button.left.is-pressed::after,
+    .touch-cluster.rotate button.left:active::after {
+      border-right-color: rgba(255, 255, 255, 0.95);
+    }
+    .touch-cluster.rotate button.right.is-pressed::after,
+    .touch-cluster.rotate button.right:active::after {
+      border-left-color: rgba(255, 255, 255, 0.95);
+    }
+    #editorToolBar {
+      position: fixed;
+      left: 50%;
+      bottom: calc(16px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(10, 16, 26, 0.75);
+      border: 1px solid rgba(143, 223, 255, 0.35);
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+      pointer-events: none;
+      z-index: 7;
+      backdrop-filter: blur(6px);
+    }
+    #editorToolBar button {
+      pointer-events: auto;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(143, 223, 255, 0.35);
+      background: rgba(18, 26, 40, 0.35);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    #editorToolBar button:hover,
+    #editorToolBar button:focus-visible {
+      transform: translateY(-1px);
+      border-color: rgba(143, 223, 255, 0.7);
+      background: rgba(20, 28, 40, 0.55);
+      outline: none;
+    }
+    #editorToolBar button[aria-pressed='true'] {
+      border-color: rgba(143, 223, 255, 0.85);
+      background: rgba(24, 32, 48, 0.68);
+    }
+    #editorToolBar button:focus-visible {
+      outline: 2px solid rgba(143, 223, 255, 0.9);
+      outline-offset: 2px;
+    }
+    #editorToolBar .tool-icon {
+      position: relative;
+      width: 24px;
+      height: 24px;
+    }
+    #editorToolBar .tool-icon::before,
+    #editorToolBar .tool-icon::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+    }
+    #editorToolBar .tool-icon.spawn::before {
+      top: 32%;
+      transform: translate(-50%, -50%);
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 14px solid rgba(143, 223, 255, 0.85);
+    }
+    #editorToolBar .tool-icon.spawn::after {
+      top: 68%;
+      width: 12px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(143, 223, 255, 0.85);
+    }
+    #editorToolBar .tool-icon.landing::before {
+      width: 18px;
+      height: 6px;
+      border-radius: 3px;
+      background: rgba(255, 214, 160, 0.85);
+      top: 70%;
+    }
+    #editorToolBar .tool-icon.landing::after {
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 214, 160, 0.85);
+      border-radius: 3px;
+      top: 38%;
+    }
+    #editorToolBar .tool-icon.terrain::before {
+      width: 18px;
+      height: 12px;
+      clip-path: polygon(0% 100%, 25% 40%, 45% 70%, 70% 20%, 100% 100%);
+      background: rgba(147, 255, 195, 0.85);
+      top: 58%;
+    }
+    #editorToolBar .tool-icon.terrain::after {
+      display: none;
+    }
+    #editorToolBar .tool-icon.blackHole::before {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 3px solid rgba(200, 180, 255, 0.85);
+    }
+    #editorToolBar .tool-icon.blackHole::after {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(200, 180, 255, 0.85);
+    }
+    #editorToolBar .tool-icon.meteor::before {
+      width: 18px;
+      height: 4px;
+      background: linear-gradient(90deg, rgba(255, 140, 60, 0) 0%, rgba(255, 200, 120, 0.85) 60%, rgba(255, 240, 200, 0.95) 100%);
+      transform: translate(-50%, -50%) rotate(-35deg);
+      border-radius: 2px;
+    }
+    #editorToolBar .tool-icon.meteor::after {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 200, 120, 0.95);
+      transform: translate(-50%, -50%) rotate(-35deg);
+    }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+    #touchToggle {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      padding: 8px 14px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 999px;
+      background: rgba(15, 25, 45, 0.7);
+      color: #f0f6ff;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      z-index: 11;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    #touchToggle:focus-visible {
+      outline: 2px solid #8fdfff;
+      outline-offset: 2px;
+    }
+    #touchToggle.toggle-hidden {
+      display: none;
     }
     #info {
       position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      font-size: 14px;
+      top: 12px;
+      left: 12px;
+      color: #f0f6ff;
+      font-size: 13px;
+      pointer-events: auto;
+      background: rgba(10, 16, 28, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 10px 12px;
+      max-width: min(320px, calc(100vw - 24px));
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 8;
+    }
+    #info.hidden {
+      display: none !important;
+    }
+    #info .info-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #info .info-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.72;
+    }
+    #info .info-toggle {
+      pointer-events: auto;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(18, 26, 40, 0.65);
+      color: #f0f6ff;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      padding: 4px 12px;
+      text-transform: uppercase;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    #info .info-toggle:focus-visible {
+      outline: 2px solid #8fdfff;
+      outline-offset: 2px;
+    }
+    #info .info-toggle:hover,
+    #info .info-toggle:active {
+      border-color: rgba(255, 255, 255, 0.45);
+      background: rgba(22, 32, 50, 0.8);
+    }
+    #info .info-body {
+      line-height: 1.45;
       pointer-events: none;
+      font-size: 13px;
+    }
+    #info.collapsed .info-body {
+      display: none;
+    }
+    #info.collapsed {
+      padding-bottom: 8px;
+    }
+    #info.debug-hidden {
+      visibility: hidden;
     }
     .hidden {
       display: none !important;
     }
-    #startMenu {
+    .menu-overlay {
       position: absolute;
       inset: 0;
       display: flex;
-      flex-direction: column;
       justify-content: center;
       align-items: center;
-      gap: 18px;
-      background: rgba(16, 20, 32, 0.92);
-      z-index: 10;
       text-align: center;
+      padding: 32px 16px;
+      z-index: 10;
+    }
+    #startMenu {
+      background: rgba(16, 20, 32, 0.92);
+    }
+    #postLevelMenu {
+      background: none;
+      padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    }
+    .menu-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      width: min(320px, 100%);
+    }
+    #startMenu .menu-panel {
+      background: rgba(8, 12, 20, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 32px 28px;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    }
+    #postLevelMenu .menu-panel {
+      background: rgba(8, 12, 20, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 24px 24px;
+      box-shadow: 0 18px 38px rgba(0, 0, 0, 0.4);
     }
     #startMenu h1 {
       margin: 0;
       font-size: 28px;
       letter-spacing: 1px;
     }
-    #startMenu button {
-      min-width: 180px;
-      padding: 10px 18px;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
+    #postLevelMenu h2 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    #postLevelMenu p {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.82);
+    }
+    .menu-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+    }
+    .menu-actions button {
+      width: 100%;
+      padding: 12px 18px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      background: rgba(15, 22, 36, 0.7);
+      color: #f1f5ff;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
       cursor: pointer;
-      background: #2ecc71;
-      color: #0b101d;
-      transition: transform 0.1s ease, background 0.1s ease;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
     }
-    #startMenu button:hover {
+    .menu-actions button:hover,
+    .menu-actions button:focus-visible {
       transform: translateY(-1px);
-      background: #27ae60;
+      border-color: rgba(255, 255, 255, 0.6);
+      background: rgba(24, 34, 52, 0.85);
+      outline: none;
     }
-    #startMenu button.secondary {
-      background: #3498db;
-      color: #f5f9ff;
+    .menu-actions button.secondary {
+      border-color: rgba(143, 223, 255, 0.45);
     }
-    #startMenu button.secondary:hover {
-      background: #2b7cb3;
+    .menu-actions button.secondary:hover,
+    .menu-actions button.secondary:focus-visible {
+      border-color: rgba(143, 223, 255, 0.7);
+      background: rgba(26, 36, 54, 0.9);
     }
     #editorPanel {
       position: absolute;
@@ -91,8 +495,57 @@
       z-index: 6;
       pointer-events: auto;
       text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
-    #editorPanel strong {
+    #editorPanel.collapsed {
+      padding-bottom: 10px;
+    }
+    #editorPanel.collapsed .editor-panel-body {
+      display: none;
+    }
+    #editorPanel .editor-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #editorPanel .editor-panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.72;
+    }
+    #editorPanel .editor-panel-toggle {
+      pointer-events: auto;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(18, 26, 40, 0.65);
+      color: #f0f6ff;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      padding: 4px 12px;
+      text-transform: uppercase;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    #editorPanel .editor-panel-toggle:focus-visible {
+      outline: 2px solid #8fdfff;
+      outline-offset: 2px;
+    }
+    #editorPanel .editor-panel-toggle:hover,
+    #editorPanel .editor-panel-toggle:active {
+      border-color: rgba(255, 255, 255, 0.45);
+      background: rgba(22, 32, 50, 0.8);
+    }
+    #editorPanel .editor-panel-body {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #editorPanel .editor-panel-body strong {
       color: #8fdfff;
       font-weight: 600;
     }
@@ -165,23 +618,179 @@
   </style>
 </head>
 <body>
-  <canvas id="gameCanvas" width="600" height="400"></canvas>
-  <div id="info"></div>
-  <div id="startMenu">
-    <h1>Moon Lander</h1>
-    <button id="menuPlay">Play</button>
-    <button id="menuEditor" class="secondary">Create Level</button>
+  <div id="gameShell">
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div id="editorToolBar" class="hidden" aria-hidden="true">
+      <button type="button" data-tool="spawn" aria-pressed="false">
+        <span class="sr-only">Spawn point tool</span>
+        <span class="tool-icon spawn" aria-hidden="true"></span>
+      </button>
+      <button type="button" data-tool="landing" aria-pressed="false">
+        <span class="sr-only">Landing zone tool</span>
+        <span class="tool-icon landing" aria-hidden="true"></span>
+      </button>
+      <button type="button" data-tool="terrain" aria-pressed="false">
+        <span class="sr-only">Terrain sculpt tool</span>
+        <span class="tool-icon terrain" aria-hidden="true"></span>
+      </button>
+      <button type="button" data-tool="blackHole" aria-pressed="false">
+        <span class="sr-only">Black hole tool</span>
+        <span class="tool-icon blackHole" aria-hidden="true"></span>
+      </button>
+      <button type="button" data-tool="meteor" aria-pressed="false">
+        <span class="sr-only">Meteor tool</span>
+        <span class="tool-icon meteor" aria-hidden="true"></span>
+      </button>
+    </div>
+    <div id="touchControls" class="hidden" aria-hidden="true">
+      <div class="touch-row">
+        <div class="touch-cluster rotate">
+          <button type="button" class="left" data-key="ArrowLeft" aria-label="Rotate left"><span class="sr-only">Rotate left</span></button>
+          <button type="button" class="right" data-key="ArrowRight" aria-label="Rotate right"><span class="sr-only">Rotate right</span></button>
+        </div>
+        <button type="button" class="menu-button" data-action="menu" aria-label="Open menu">Start</button>
+        <div class="touch-cluster action">
+          <button type="button" class="bomb-button" data-key="Space" data-action="bomb" aria-label="Drop bomb">Bomb</button>
+          <button type="button" class="thrust-button" data-key="ArrowUp" aria-label="Main thruster">Thrust</button>
+        </div>
+      </div>
+    </div>
   </div>
-  <div id="editorPanel" class="hidden"></div>
+  <button id="touchToggle" class="hidden" type="button" aria-pressed="false">Touch Controls</button>
+  <div id="info" class="hidden" aria-live="polite" aria-atomic="true">
+    <div class="info-header">
+      <span class="info-title">Status</span>
+      <button type="button" class="info-toggle" aria-expanded="true">Hide info</button>
+    </div>
+    <div class="info-body"></div>
+  </div>
+  <div id="startMenu" class="menu-overlay">
+    <div class="menu-panel">
+      <h1>Moon Lander</h1>
+      <div class="menu-actions">
+        <button id="menuPlay">Play</button>
+        <button id="menuEditor" class="secondary">Create Level</button>
+      </div>
+    </div>
+  </div>
+  <div id="postLevelMenu" class="menu-overlay hidden" aria-hidden="true">
+    <div class="menu-panel">
+      <h2 id="postLevelTitle">Mission Update</h2>
+      <p id="postLevelMessage"></p>
+      <div class="menu-actions">
+        <button id="postRestart" type="button">Restart Level</button>
+        <button id="postNext" type="button" class="secondary">Next Level</button>
+        <button id="postMainMenu" type="button" class="secondary">Main Menu</button>
+      </div>
+    </div>
+  </div>
+  <div id="editorPanel" class="hidden" aria-live="polite" aria-atomic="true" aria-hidden="true">
+    <div class="editor-panel-header">
+      <span class="editor-panel-title">Level Editor</span>
+      <button type="button" class="editor-panel-toggle" aria-expanded="true">Hide info</button>
+    </div>
+    <div class="editor-panel-body"></div>
+  </div>
   <script>
     (() => {
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d');
-      const info = document.getElementById('info');
+      const infoPanel = document.getElementById('info');
+      const infoBody = infoPanel ? infoPanel.querySelector('.info-body') : null;
+      const infoToggleButton = infoPanel ? infoPanel.querySelector('.info-toggle') : null;
+      const infoTitle = infoPanel ? infoPanel.querySelector('.info-title') : null;
       const startMenu = document.getElementById('startMenu');
       const menuPlayBtn = document.getElementById('menuPlay');
       const menuEditorBtn = document.getElementById('menuEditor');
+      const touchControls = document.getElementById('touchControls');
+      const touchToggle = document.getElementById('touchToggle');
+      const postLevelMenu = document.getElementById('postLevelMenu');
+      const postLevelTitle = document.getElementById('postLevelTitle');
+      const postLevelMessage = document.getElementById('postLevelMessage');
+      const postRestartBtn = document.getElementById('postRestart');
+      const postNextBtn = document.getElementById('postNext');
+      const postMenuBtn = document.getElementById('postMainMenu');
+      const editorToolBar = document.getElementById('editorToolBar');
+      const editorToolButtons = editorToolBar
+        ? Array.from(editorToolBar.querySelectorAll('button[data-tool]'))
+        : [];
+
+      let infoCollapsed = false;
+      let editorPanelCollapsed = false;
+
+      function setInfoTitle(text) {
+        if (infoTitle) {
+          infoTitle.textContent = text || 'Status';
+        }
+      }
+
+      function applyInfoCollapsedState() {
+        if (!infoPanel) return;
+        infoPanel.classList.toggle('collapsed', infoCollapsed);
+        if (infoToggleButton) {
+          infoToggleButton.setAttribute('aria-expanded', (!infoCollapsed).toString());
+          infoToggleButton.textContent = infoCollapsed ? 'Show info' : 'Hide info';
+        }
+      }
+
+      function setInfoMessage(text, title = null) {
+        if (!infoPanel || !infoBody) return;
+        if (title !== null) {
+          setInfoTitle(title);
+        }
+        infoBody.textContent = text || '';
+        const hasText = !!text;
+        if (hasText) {
+          infoPanel.classList.remove('hidden');
+          infoPanel.setAttribute('aria-hidden', 'false');
+          applyInfoCollapsedState();
+        } else {
+          infoPanel.classList.add('hidden');
+          infoPanel.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function clearInfoMessage() {
+        if (!infoPanel || !infoBody) return;
+        infoBody.textContent = '';
+        infoPanel.classList.add('hidden');
+        infoPanel.setAttribute('aria-hidden', 'true');
+      }
+
+      function setEditorPanelTitle(text) {
+        if (editorPanelTitle) {
+          editorPanelTitle.textContent = text || 'Level Editor';
+        }
+      }
+
+      function applyEditorPanelCollapsedState() {
+        if (!editorPanel) return;
+        editorPanel.classList.toggle('collapsed', editorPanelCollapsed);
+        if (editorPanelToggle) {
+          editorPanelToggle.setAttribute('aria-expanded', (!editorPanelCollapsed).toString());
+          editorPanelToggle.textContent = editorPanelCollapsed ? 'Show info' : 'Hide info';
+        }
+      }
+
+      const TOUCH_PREF_KEY = 'moonlander.touchControls';
+      let manualTouchPreference = null;
+      let wantsTouchControls = false;
+      let touchControlsVisible = false;
+      let postLevelActive = false;
+      let postLevelOutcome = null;
+      let postLevelRevealTimer = null;
+      const coarsePointerQuery = window.matchMedia ? window.matchMedia('(pointer: coarse)') : null;
+
+      const activeTouchPointers = new Map();
+      const virtualKeyCounts = new Map();
+      const physicalKeyState = {};
+
+      const TOUCH_CONTROL_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space']);
+
       const editorPanel = document.getElementById('editorPanel');
+      const editorPanelBody = editorPanel ? editorPanel.querySelector('.editor-panel-body') : null;
+      const editorPanelToggle = editorPanel ? editorPanel.querySelector('.editor-panel-toggle') : null;
+      const editorPanelTitle = editorPanel ? editorPanel.querySelector('.editor-panel-title') : null;
       let width = canvas.width;
       let height = canvas.height;
 
@@ -193,11 +802,398 @@
       };
       let appMode = APP_MODE.MENU;
 
-      const TARGET_ASPECT = 16 / 9;
       const MAX_VIEW_WIDTH = 1280;
-      const MAX_VIEW_HEIGHT = 720;
+      const MAX_VIEW_HEIGHT = 1400;
       const MIN_VIEW_WIDTH = 600;
       const MIN_VIEW_HEIGHT = 400;
+
+      function computeDefaultTouchPreference() {
+        if (coarsePointerQuery && typeof coarsePointerQuery.matches === 'boolean' && coarsePointerQuery.matches) {
+          return true;
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0) {
+          return true;
+        }
+        if (window.matchMedia) {
+          try {
+            const fine = window.matchMedia('(pointer: fine)');
+            if (fine && fine.matches) {
+              return false;
+            }
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        return 'ontouchstart' in window;
+      }
+
+      function updateTouchToggleLabel() {
+        if (!touchToggle) return;
+        const auto = manualTouchPreference === null;
+        const stateLabel = auto
+          ? (wantsTouchControls ? 'Auto (On)' : 'Auto (Off)')
+          : (manualTouchPreference === 'on' ? 'On' : 'Off');
+        touchToggle.textContent = `Touch HUD: ${stateLabel}`;
+        touchToggle.setAttribute('aria-pressed', wantsTouchControls ? 'true' : 'false');
+        touchToggle.classList.remove('hidden');
+      }
+
+      function setTouchControlsVisibility(shouldShow) {
+        const show = !!shouldShow && wantsTouchControls;
+        if (show === touchControlsVisible) return;
+        const wasVisible = touchControlsVisible;
+        touchControlsVisible = show;
+        if (!touchControls) return;
+        if (show) {
+          touchControls.classList.remove('hidden');
+          touchControls.classList.add('visible');
+          touchControls.setAttribute('aria-hidden', 'false');
+        } else {
+          touchControls.classList.remove('visible');
+          touchControls.classList.add('hidden');
+          touchControls.setAttribute('aria-hidden', 'true');
+          if (wasVisible) {
+            clearVirtualTouchState();
+          }
+        }
+        if (typeof resizeCanvas === 'function') {
+          resizeCanvas();
+        }
+      }
+
+      function refreshTouchControlsPreference() {
+        const previous = wantsTouchControls;
+        if (manualTouchPreference === 'on') {
+          wantsTouchControls = true;
+        } else if (manualTouchPreference === 'off') {
+          wantsTouchControls = false;
+        } else {
+          wantsTouchControls = computeDefaultTouchPreference();
+        }
+        updateTouchToggleLabel();
+        if (!wantsTouchControls && touchControlsVisible) {
+          setTouchControlsVisibility(false);
+        } else if (wantsTouchControls && previous !== wantsTouchControls) {
+          updateTouchControlsForMode();
+        }
+        return previous !== wantsTouchControls;
+      }
+
+      function syncCombinedKeyState(key) {
+        const virtualCount = virtualKeyCounts.get(key) || 0;
+        const physicalDown = !!physicalKeyState[key];
+        const shouldBeDown = virtualCount > 0 || physicalDown;
+        if (shouldBeDown) {
+          keys[key] = true;
+        } else if (keys[key]) {
+          keys[key] = false;
+        }
+      }
+
+      function incrementVirtualKey(key) {
+        const current = virtualKeyCounts.get(key) || 0;
+        virtualKeyCounts.set(key, current + 1);
+        keys[key] = true;
+      }
+
+      function decrementVirtualKey(key) {
+        const current = virtualKeyCounts.get(key) || 0;
+        if (current <= 1) {
+          virtualKeyCounts.delete(key);
+        } else {
+          virtualKeyCounts.set(key, current - 1);
+        }
+        syncCombinedKeyState(key);
+      }
+
+      function clearVirtualTouchState() {
+        activeTouchPointers.clear();
+        virtualKeyCounts.clear();
+        const buttons = touchControls ? touchControls.querySelectorAll('button.is-pressed') : null;
+        if (buttons) {
+          buttons.forEach(btn => btn.classList.remove('is-pressed'));
+        }
+        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].forEach((key) => syncCombinedKeyState(key));
+      }
+
+      function resetControlKeyState() {
+        TOUCH_CONTROL_KEYS.forEach((key) => {
+          physicalKeyState[key] = false;
+          if (keys[key]) {
+            keys[key] = false;
+          }
+        });
+      }
+
+      function updateTouchControlsForMode() {
+        const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        setTouchControlsVisibility(gameplayMode);
+        if (touchToggle) {
+          if (appMode === APP_MODE.EDITOR) {
+            touchToggle.classList.add('toggle-hidden');
+          } else {
+            touchToggle.classList.remove('toggle-hidden');
+          }
+        }
+      }
+
+      function setManualTouchPreference(value) {
+        manualTouchPreference = value;
+        try {
+          if (value === null) {
+            window.localStorage.removeItem(TOUCH_PREF_KEY);
+          } else {
+            window.localStorage.setItem(TOUCH_PREF_KEY, value);
+          }
+        } catch (_) {
+          /* storage can fail (private mode) */
+        }
+        refreshTouchControlsPreference();
+      }
+
+      function cycleTouchPreference() {
+        if (manualTouchPreference === 'on') {
+          setManualTouchPreference('off');
+        } else if (manualTouchPreference === 'off') {
+          setManualTouchPreference(null);
+        } else {
+          setManualTouchPreference('on');
+        }
+      }
+
+      function hidePostLevelMenu() {
+        if (!postLevelMenu) return;
+        if (postLevelRevealTimer) {
+          clearTimeout(postLevelRevealTimer);
+          postLevelRevealTimer = null;
+        }
+        postLevelActive = false;
+        postLevelOutcome = null;
+        postLevelMenu.classList.add('hidden');
+        postLevelMenu.setAttribute('aria-hidden', 'true');
+      }
+
+      function showPostLevelMenu(kind, detail, upcoming) {
+        if (!postLevelMenu) return;
+        if (appMode !== APP_MODE.PLAY) return;
+        if (postLevelRevealTimer) {
+          clearTimeout(postLevelRevealTimer);
+          postLevelRevealTimer = null;
+        }
+        postLevelOutcome = kind;
+        if (postLevelTitle) {
+          postLevelTitle.textContent = kind === 'success' ? 'Mission Complete' : 'Mission Failed';
+        }
+        if (postLevelMessage) {
+          postLevelMessage.textContent = detail || '';
+        }
+        if (postNextBtn) {
+          if (kind === 'success') {
+            postNextBtn.classList.remove('hidden');
+            postNextBtn.disabled = false;
+            postNextBtn.textContent = upcoming ? `Next: ${upcoming}` : 'Next Level';
+          } else {
+            postNextBtn.classList.add('hidden');
+            postNextBtn.disabled = true;
+          }
+        }
+        postLevelMenu.classList.add('hidden');
+        postLevelMenu.setAttribute('aria-hidden', 'true');
+        postLevelActive = false;
+        postLevelRevealTimer = window.setTimeout(() => {
+          postLevelRevealTimer = null;
+          if (appMode !== APP_MODE.PLAY) return;
+          postLevelActive = true;
+          postLevelMenu.classList.remove('hidden');
+          postLevelMenu.setAttribute('aria-hidden', 'false');
+        }, 3000);
+      }
+
+      function handleMenuButtonPress() {
+        audio.unlock();
+        if (appMode === APP_MODE.TEST) {
+          returnToEditorFromTest();
+        } else if (appMode === APP_MODE.EDITOR) {
+          enterMenu();
+        } else if (appMode === APP_MODE.PLAY) {
+          enterMenu();
+        }
+      }
+
+      function advanceToNextLevel() {
+        if (appMode !== APP_MODE.PLAY) return;
+        if (!gameOver) return;
+        if (postLevelOutcome !== 'success') return;
+        if (!Array.isArray(levels) || levels.length === 0) return;
+        nextLevelIndex = (currentLevelIndex + 1) % levels.length;
+        shouldRegen = true;
+        hidePostLevelMenu();
+        resetGame(true);
+      }
+
+      try {
+        const savedPref = window.localStorage.getItem(TOUCH_PREF_KEY);
+        if (savedPref === 'on' || savedPref === 'off') {
+          manualTouchPreference = savedPref;
+        }
+      } catch (_) {
+        manualTouchPreference = null;
+      }
+      if (touchToggle) {
+        touchToggle.addEventListener('click', cycleTouchPreference);
+        touchToggle.setAttribute('title', 'Tap to cycle: On -> Off -> Auto');
+      }
+      function releaseVirtualPointer(pointerId) {
+        const state = activeTouchPointers.get(pointerId);
+        if (!state) return;
+        activeTouchPointers.delete(pointerId);
+        const { key, action, element } = state;
+        if (element && element.classList.contains('is-pressed')) {
+          element.classList.remove('is-pressed');
+        }
+        if (element && typeof element.releasePointerCapture === 'function') {
+          try {
+            element.releasePointerCapture(pointerId);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        if (key) {
+          decrementVirtualKey(key);
+        }
+        if (action === 'menu') {
+          // menu action is fire-and-forget on pointer down
+        }
+      }
+
+      function handleVirtualPointerDown(event) {
+        if (!touchControlsVisible) return;
+        const button = event.target instanceof Element ? event.target.closest('button') : null;
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const key = button.dataset.key;
+        const action = button.dataset.action || null;
+        if (!key && !action) return;
+        const pointerId = event.pointerId;
+        if (activeTouchPointers.has(pointerId)) {
+          releaseVirtualPointer(pointerId);
+        }
+        activeTouchPointers.set(pointerId, { key: key || null, action, element: button });
+        button.classList.add('is-pressed');
+        if (typeof button.setPointerCapture === 'function') {
+          try {
+            button.setPointerCapture(pointerId);
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        if (action === 'menu') {
+          handleMenuButtonPress();
+          return;
+        }
+        if (!key) return;
+        incrementVirtualKey(key);
+        if (action === 'bomb' || key === 'Space') {
+          if (typeof canDropBomb === 'function') {
+            dropBomb();
+          }
+        }
+      }
+
+      function handleVirtualPointerEnd(event) {
+        releaseVirtualPointer(event.pointerId);
+      }
+
+      if (touchControls) {
+        touchControls.addEventListener('pointerdown', handleVirtualPointerDown);
+        touchControls.addEventListener('pointerup', handleVirtualPointerEnd);
+        touchControls.addEventListener('pointercancel', handleVirtualPointerEnd);
+        touchControls.addEventListener('pointerleave', handleVirtualPointerEnd);
+        touchControls.addEventListener('contextmenu', (event) => event.preventDefault());
+      }
+
+      if (postRestartBtn) {
+        postRestartBtn.addEventListener('click', () => {
+          audio.unlock();
+          if (appMode !== APP_MODE.PLAY || !gameOver) return;
+          shouldRegen = false;
+          hidePostLevelMenu();
+          resetGame(true);
+        });
+      }
+
+      if (postNextBtn) {
+        postNextBtn.addEventListener('click', () => {
+          audio.unlock();
+          if (appMode !== APP_MODE.PLAY || !gameOver) return;
+          advanceToNextLevel();
+        });
+      }
+
+      if (postMenuBtn) {
+        postMenuBtn.addEventListener('click', () => {
+          audio.unlock();
+          if (appMode !== APP_MODE.PLAY) return;
+          enterMenu();
+        });
+      }
+      if (infoToggleButton && infoPanel) {
+        infoToggleButton.addEventListener('click', () => {
+          infoCollapsed = !infoCollapsed;
+          applyInfoCollapsedState();
+          if (infoBody && infoBody.textContent && infoBody.textContent.length) {
+            infoPanel.classList.remove('hidden');
+            infoPanel.setAttribute('aria-hidden', 'false');
+          }
+        });
+      }
+      if (editorPanelToggle && editorPanel) {
+        editorPanelToggle.addEventListener('click', () => {
+          editorPanelCollapsed = !editorPanelCollapsed;
+          applyEditorPanelCollapsedState();
+          if (!editorPanelCollapsed) {
+            editorPanel.classList.remove('hidden');
+            editorPanel.setAttribute('aria-hidden', 'false');
+          }
+        });
+      }
+      if (editorToolBar) {
+        editorToolBar.addEventListener('click', (event) => {
+          const button = event.target.closest('button[data-tool]');
+          if (!button || button.disabled) return;
+          event.preventDefault();
+          const tool = button.getAttribute('data-tool');
+          const targetIndex = editorState.placementOptions.indexOf(tool);
+          if (targetIndex === -1 || targetIndex === editorState.placementIndex) return;
+          editorState.placementIndex = targetIndex;
+          editorState.isPainting = false;
+          editorState.hasMoved = false;
+          editorState.pendingPaintStart = null;
+          editorState.lastPointer = null;
+          if (tool !== 'meteor') {
+            editorCancelPendingMeteor();
+          }
+          updateEditorOverlay();
+        });
+      }
+
+      if (coarsePointerQuery) {
+        const listener = () => {
+          if (manualTouchPreference === null) {
+            refreshTouchControlsPreference();
+            updateTouchControlsForMode();
+          }
+        };
+        if (typeof coarsePointerQuery.addEventListener === 'function') {
+          coarsePointerQuery.addEventListener('change', listener);
+        } else if (typeof coarsePointerQuery.addListener === 'function') {
+          coarsePointerQuery.addListener(listener);
+        }
+      }
+
+      refreshTouchControlsPreference();
+      updateTouchControlsForMode();
 
       // --- Procedural terrain (peaks, valleys, and a flat pad segment) ---
       const levels = [
@@ -287,7 +1283,6 @@
       const CRASH_CRATER_DEPTH = 44;  // px depth carved by a crash explosion
 
       const METEOR_TRAIL_INTERVAL = 26;      // ms between trail samples
-      const METEOR_GRAVITY_SCALE = 0.9;      // multiplier applied to g for meteor descent
       const METEOR_CRATER_RADIUS_SCALE = 2.1; // crater radius multiplier per meteor radius
       const METEOR_CRATER_DEPTH_SCALE = 1.25; // crater depth multiplier per meteor radius
       const METEOR_SPAWN_ABOVE_MARGIN = 60;   // ensure meteors spawn above the visible top edge
@@ -322,7 +1317,7 @@
       const editorState = {
         active: false,
         grid: null,
-        placementOptions: ['spawn', 'landing', 'blackHole', 'meteor'],
+        placementOptions: ['spawn', 'landing', 'terrain', 'blackHole', 'meteor'],
         placementIndex: 0,
         spawn: { x: 180, y: 120 },
         isPainting: false,
@@ -1095,7 +2090,11 @@
         }
       }
 
-      function updateEditorPanel(statusLines, extraHtml = '') {
+      function updateEditorPanel(statusLines, extraHtml = '', title = null) {
+        if (!editorPanel || !editorPanelBody) return;
+        if (title !== null) {
+          setEditorPanelTitle(title);
+        }
         let html = '';
         if (statusLines && statusLines.length) {
           html += statusLines.map(line => `<div>${line}</div>`).join('');
@@ -1103,7 +2102,29 @@
         if (extraHtml) {
           html += extraHtml;
         }
-        editorPanel.innerHTML = html;
+        editorPanelBody.innerHTML = html;
+        applyEditorPanelCollapsedState();
+      }
+
+      function updateEditorToolButtons() {
+        if (!editorToolBar) return;
+        const isEditorMode = appMode === APP_MODE.EDITOR;
+        if (isEditorMode && editorState.placementOptions.length) {
+          editorToolBar.classList.remove('hidden');
+          editorToolBar.setAttribute('aria-hidden', 'false');
+          const current = editorState.placementOptions[editorState.placementIndex];
+          for (const button of editorToolButtons) {
+            const tool = button.getAttribute('data-tool');
+            const enabled = editorState.placementOptions.includes(tool);
+            button.disabled = !enabled;
+            const isActive = enabled && tool === current;
+            button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            button.classList.toggle('active', isActive);
+          }
+        } else {
+          editorToolBar.classList.add('hidden');
+          editorToolBar.setAttribute('aria-hidden', 'true');
+        }
       }
 
       function buildMeteorEditorControls() {
@@ -1250,6 +2271,7 @@
         switch (key) {
           case 'spawn': return 'Spawn point';
           case 'landing': return 'Landing zone';
+          case 'terrain': return 'Terrain';
           case 'blackHole': return 'Black hole';
           case 'meteor': return 'Meteor';
           default: return key;
@@ -1315,7 +2337,7 @@ let debris = []; // explosion pieces
 let landed = false; // success state
 let winFx = []; // celebration particles
 let padFlash = 0; // ms of pad glow remaining
-let shouldRegen = false; // regenerate terrain only after a successful landing
+      let shouldRegen = false; // regenerate terrain only after choosing to advance
 let padPulsePhase = 0;
 let padGlowAlpha = 0.525;
 let smoke = []; // engine dust/smoke particles near ground
@@ -1334,36 +2356,39 @@ let camX = null;
 let camY = null;
 
       function resizeCanvas() {
-        const availWidth = window.innerWidth * 0.9;
-        const availHeight = window.innerHeight * 0.9;
+        let hudReserve = 0;
+        if (touchControlsVisible && touchControls) {
+          const rect = touchControls.getBoundingClientRect();
+          hudReserve = Math.ceil(rect.height);
+        }
+        const availWidth = Math.max(0, window.innerWidth);
+        const availHeight = Math.max(window.innerHeight - hudReserve, 0);
         const maxWidth = Math.min(availWidth, MAX_VIEW_WIDTH);
         const maxHeight = Math.min(availHeight, MAX_VIEW_HEIGHT);
+        const minWidthCap = Math.min(MIN_VIEW_WIDTH, availWidth);
+        const minHeightCap = Math.min(MIN_VIEW_HEIGHT, availHeight);
 
         let targetWidth = maxWidth;
-        let targetHeight = targetWidth / TARGET_ASPECT;
-
-        if (targetHeight > maxHeight) {
-          targetHeight = maxHeight;
-          targetWidth = targetHeight * TARGET_ASPECT;
-        }
-
-        const minWidthCap = Math.min(MIN_VIEW_WIDTH, window.innerWidth);
-        const minHeightCap = Math.min(MIN_VIEW_HEIGHT, window.innerHeight);
+        let targetHeight = maxHeight;
 
         if (targetWidth < minWidthCap) {
           targetWidth = minWidthCap;
-          targetHeight = targetWidth / TARGET_ASPECT;
         }
-
         if (targetHeight < minHeightCap) {
           targetHeight = minHeightCap;
-          targetWidth = targetHeight * TARGET_ASPECT;
         }
 
-        canvas.width = Math.round(targetWidth);
-        canvas.height = Math.round(targetHeight);
-        canvas.style.width = `${Math.round(targetWidth)}px`;
-        canvas.style.height = `${Math.round(targetHeight)}px`;
+        if (availWidth > 0) {
+          targetWidth = Math.min(targetWidth, availWidth);
+        }
+        if (availHeight > 0) {
+          targetHeight = Math.min(targetHeight, availHeight);
+        }
+
+        canvas.width = Math.max(1, Math.round(targetWidth));
+        canvas.height = Math.max(1, Math.round(targetHeight));
+        canvas.style.width = `${canvas.width}px`;
+        canvas.style.height = `${canvas.height}px`;
         width = canvas.width;
         height = canvas.height;
 
@@ -1735,70 +2760,90 @@ let camY = null;
 
       function updateEditorOverlay() {
         if (appMode === APP_MODE.EDITOR) {
-          editorPanel.classList.remove('hidden');
+          if (editorPanel) {
+            editorPanel.classList.remove('hidden');
+            editorPanel.setAttribute('aria-hidden', 'false');
+          }
           const option = editorState.placementOptions[editorState.placementIndex];
           const placementLabel = labelForPlacement(option);
-          let clickInstruction = `Click: place ${placementLabel}`;
-          const lines = [
-            '<strong>Level Editor</strong>',
-            'Left drag: add terrain (hold Alt to carve)',
-            `Mouse wheel or 1-4: select ${placementLabel}`,
-          ];
-          if (option === 'spawn') {
+          const toolTitle = `${placementLabel} Tool`;
+          const lines = ['Toolbar buttons or 1-5 select tools (mouse wheel cycles).'];
+          if (option === 'terrain') {
+            lines.push('Tap or click to sculpt terrain (hold Alt to carve).');
+            lines.push('Drag to paint continuous strokes; release to finish.');
+          } else if (option === 'spawn') {
+            lines.push('Tap or click: place the spawn point');
             lines.push('Drag: reposition the spawn point');
           } else if (option === 'landing') {
+            lines.push('Tap or click: place the landing zone');
             lines.push('Drag: slide the landing zone');
           } else if (option === 'blackHole') {
-            clickInstruction = 'Click: place black hole (Alt + click removes one)';
+            lines.push('Tap or click: place black hole (Alt + tap/click removes one)');
             lines.push('Drag: move the nearest black hole');
           } else if (option === 'meteor') {
-            clickInstruction = 'Click + drag: aim meteor (release to confirm)';
-            lines.push('Alt + click: delete nearest meteor');
-            lines.push('Drag start/end: adjust spawn or impact');
+            lines.push('Tap + drag: aim meteor (release to confirm)');
+            lines.push('Alt + tap/click: delete nearest meteor');
+            lines.push('Drag start/end handles: adjust spawn or impact');
             lines.push('Drag path: move the entire meteor');
             lines.push('[/ ] radius  |  -/ = speed');
             lines.push(`,/ . warning lead  |  ;/' (apostrophe) start time`);
             lines.push('Select a meteor or defaults in the panel to edit timing, warning, speed, and size.');
+          } else {
+            lines.push(`Tap or click: place ${placementLabel}`);
           }
-          lines.splice(3, 0, clickInstruction);
           lines.push('R: test this level');
           lines.push('Esc: back to menu');
           if (option === 'meteor') {
             const panelHtml = buildMeteorEditorControls();
-            updateEditorPanel(lines, panelHtml);
+            updateEditorPanel(lines, panelHtml, toolTitle);
             attachMeteorEditorEvents();
           } else {
-            updateEditorPanel(lines);
+            updateEditorPanel(lines, '', toolTitle);
           }
         } else if (appMode === APP_MODE.TEST) {
-          editorPanel.classList.remove('hidden');
-          updateEditorPanel([
-            '<strong>Test Flight</strong>',
-            'Arrow keys: fly the lander',
-            'R: restart test',
-            'Esc: return to editor',
-          ]);
+          if (editorPanel) {
+            editorPanel.classList.remove('hidden');
+            editorPanel.setAttribute('aria-hidden', 'false');
+          }
+          updateEditorPanel(
+            [
+              'Arrow keys: fly the lander',
+              'R: restart test',
+              'Esc: return to editor',
+            ],
+            '',
+            'Test Flight'
+          );
         } else {
-          editorPanel.classList.add('hidden');
-          updateEditorPanel([]);
+          if (editorPanel) {
+            editorPanel.classList.add('hidden');
+            editorPanel.setAttribute('aria-hidden', 'true');
+          }
+          updateEditorPanel([], '', null);
         }
+        updateEditorToolButtons();
       }
 
       function enterMenu() {
         appMode = APP_MODE.MENU;
+        hidePostLevelMenu();
+        updateTouchControlsForMode();
         editorState.active = false;
         startMenu.classList.remove('hidden');
         updateEditorOverlay();
-        info.textContent = '';
+        clearInfoMessage();
         audio.setThrusterActive(false);
         keys.Space = false;
         for (const key of Object.keys(keys)) {
           if (keys[key]) keys[key] = false;
         }
+        resetControlKeyState();
       }
 
       function enterPlay() {
         appMode = APP_MODE.PLAY;
+        hidePostLevelMenu();
+        updateTouchControlsForMode();
         startMenu.classList.add('hidden');
         editorState.active = false;
         generateTerrain(0);
@@ -1808,6 +2853,8 @@ let camY = null;
 
       function enterEditor(resetTerrain = false) {
         appMode = APP_MODE.EDITOR;
+        hidePostLevelMenu();
+        updateTouchControlsForMode();
         startMenu.classList.add('hidden');
         initEditorTerrain(resetTerrain);
         resetGame(false, {
@@ -1833,6 +2880,7 @@ let camY = null;
         if (!startingFromEditor) {
           restoreTerrainFromBaseline();
         }
+        hidePostLevelMenu();
         if (startingFromEditor) {
           editorState.camX = camX;
           editorState.camY = camY;
@@ -1862,6 +2910,7 @@ let camY = null;
           alignPadToSurface(pad.x + pad.w / 2, pad.y + pad.h);
         }
         appMode = APP_MODE.TEST;
+        updateTouchControlsForMode();
         startMenu.classList.add('hidden');
         exploded = false;
         terrain.meteors = cloneMeteors(editorState.meteors);
@@ -1883,6 +2932,7 @@ let camY = null;
           editorState.grid.blackHoles = cloneBlackHoles(editorState.testBaseline.blackHoles);
           editorState.grid.meteors = cloneMeteors(editorState.testBaseline.meteors);
         }
+        hidePostLevelMenu();
         enterEditor(false);
         editorState.testBaseline = null;
       }
@@ -1904,6 +2954,7 @@ let camY = null;
       window.addEventListener('keydown', (e) => {
         audio.unlock();
         const key = e.key === 'Spacebar' ? ' ' : e.key;
+        const normalizedKey = key === ' ' ? 'Space' : key;
         const isEditorInput = editorPanel.contains(e.target) && e.target instanceof HTMLInputElement;
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
@@ -1926,6 +2977,12 @@ let camY = null;
           }
         }
         keys[key] = true;
+        if (TOUCH_CONTROL_KEYS.has(normalizedKey)) {
+          physicalKeyState[normalizedKey] = true;
+          if (normalizedKey !== key) {
+            keys[normalizedKey] = true;
+          }
+        }
         const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
         if ((key === ' ' || key === 'Space') && gameplayMode) {
           if (!e.repeat) {
@@ -1939,6 +2996,7 @@ let camY = null;
         if (key === 'r' || key === 'R') {
           e.preventDefault();
           if (appMode === APP_MODE.PLAY) {
+            shouldRegen = false;
             resetGame(true);
           } else if (appMode === APP_MODE.EDITOR) {
             enterEditorTest();
@@ -1947,13 +3005,27 @@ let camY = null;
           }
           return;
         }
+        if (key === 'n' || key === 'N') {
+          if (appMode === APP_MODE.PLAY && gameOver) {
+            e.preventDefault();
+            advanceToNextLevel();
+            return;
+          }
+        }
         if (appMode === APP_MODE.EDITOR) {
           if (!isEditorInput) {
-            const placementMap = { '1': 'spawn', '2': 'landing', '3': 'blackHole', '4': 'meteor' };
+            const placementMap = { '1': 'spawn', '2': 'landing', '3': 'terrain', '4': 'blackHole', '5': 'meteor' };
             if (placementMap[key]) {
               const targetIndex = editorState.placementOptions.indexOf(placementMap[key]);
               if (targetIndex !== -1) {
                 editorState.placementIndex = targetIndex;
+                editorState.isPainting = false;
+                editorState.hasMoved = false;
+                editorState.pendingPaintStart = null;
+                editorState.lastPointer = null;
+                if (placementMap[key] !== 'meteor') {
+                  editorCancelPendingMeteor();
+                }
                 updateEditorOverlay();
               }
               e.preventDefault();
@@ -2046,14 +3118,26 @@ let camY = null;
       });
       window.addEventListener('keyup', (e) => {
         const key = e.key === 'Spacebar' ? ' ' : e.key;
+        const normalizedKey = key === ' ' ? 'Space' : key;
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
-          keys.Space = false;
         }
-        keys[key] = false;
+        if (TOUCH_CONTROL_KEYS.has(normalizedKey)) {
+          physicalKeyState[normalizedKey] = false;
+          if (normalizedKey !== key && keys[key]) {
+            keys[key] = false;
+          }
+          syncCombinedKeyState(normalizedKey);
+        } else {
+          keys[key] = false;
+        }
       });
       window.addEventListener('mousedown', () => audio.unlock());
       window.addEventListener('touchstart', () => audio.unlock(), { passive: true });
+      window.addEventListener('blur', () => {
+        resetControlKeyState();
+        clearVirtualTouchState();
+      });
 
       window.addEventListener('wheel', (e) => {
         if (appMode !== APP_MODE.EDITOR) return;
@@ -2065,123 +3149,162 @@ let camY = null;
         updateEditorOverlay();
       }, { passive: false });
 
-      canvas.addEventListener('mousedown', (e) => {
+      function resetEditorPaintingState() {
+        editorState.isPainting = false;
+        editorState.hasMoved = false;
+        editorState.pendingPaintStart = null;
+        editorState.lastPointer = null;
+      }
+
+      function beginEditorInteraction(world, { altKey = false } = {}) {
         if (appMode !== APP_MODE.EDITOR) return;
-        if (e.button !== 0) return;
-        const world = screenToWorld(e.offsetX, e.offsetY);
-        const option = editorState.placementOptions[editorState.placementIndex];
+        if (!editorState.placementOptions.length) return;
         editorState.cursorWorld = { ...world };
         editorState.dragging = null;
-        const resetPainting = () => {
-          editorState.isPainting = false;
-          editorState.hasMoved = false;
-          editorState.pendingPaintStart = null;
-          editorState.lastPointer = null;
-        };
-        if (option === 'blackHole') {
-          if (e.altKey) {
-            editorRemoveBlackHole(world.x, world.y);
-          } else {
-            const hole = findBlackHoleNear(world.x, world.y, 1.15);
-            if (hole) {
-              const holes = ensureEditorBlackHoles();
-              const index = holes.indexOf(hole);
-              if (index !== -1) {
-                editorState.dragging = {
-                  type: 'blackHole',
-                  index,
-                  offsetX: hole.x - world.x,
-                  offsetY: hole.y - world.y,
-                };
-              }
-            }
-            if (!editorState.dragging) {
-              editorPlaceBlackHole(world.x, world.y);
-            }
-          }
-          resetPainting();
+        const option = editorState.placementOptions[editorState.placementIndex];
+        if (!option) {
+          resetEditorPaintingState();
           return;
         }
-        if (option === 'meteor') {
-          if (e.altKey) {
-            if (!editorRemoveMeteor(world.x, world.y)) {
-              editorState.selectedMeteor = -1;
-            }
+        if (option === 'blackHole' && altKey) {
+          editorRemoveBlackHole(world.x, world.y);
+          resetEditorPaintingState();
+          return;
+        }
+        if (option === 'meteor' && altKey) {
+          if (!editorRemoveMeteor(world.x, world.y)) {
+            editorState.selectedMeteor = -1;
+          }
+          editorCancelPendingMeteor();
+          resetEditorPaintingState();
+          return;
+        }
+
+        const spawnDist = Math.hypot(world.x - editorState.spawn.x, world.y - editorState.spawn.y);
+        if (spawnDist <= 40) {
+          editorState.dragging = {
+            type: 'spawn',
+            offsetX: editorState.spawn.x - world.x,
+            offsetY: editorState.spawn.y - world.y,
+          };
+          resetEditorPaintingState();
+          return;
+        }
+
+        const margin = 20;
+        const padCenterX = pad.x + pad.w / 2;
+        const padCenterY = pad.y + pad.h / 2;
+        const withinPadX = world.x >= pad.x - margin && world.x <= pad.x + pad.w + margin;
+        const withinPadY = world.y >= pad.y - margin && world.y <= pad.y + pad.h + margin;
+        if (withinPadX && withinPadY) {
+          editorState.dragging = {
+            type: 'landing',
+            offsetX: padCenterX - world.x,
+            offsetY: padCenterY - world.y,
+          };
+          resetEditorPaintingState();
+          return;
+        }
+
+        const handle = pickMeteorHandleAt(world.x, world.y);
+        if (handle) {
+          const meteors = ensureEditorMeteors();
+          const meteor = meteors[handle.index];
+          if (meteor) {
+            editorState.selectedMeteor = handle.index;
             editorCancelPendingMeteor();
+            editorState.isPlacingMeteor = false;
+            editorState.pendingMeteor = null;
+            editorState.dragging = {
+              type: 'meteor',
+              index: handle.index,
+              handle: handle.handle,
+              offsetX: handle.offsetX || 0,
+              offsetY: handle.offsetY || 0,
+              startPointer: handle.startPointer ? { ...handle.startPointer } : { ...world },
+              initialSpawn: handle.initialSpawn ? { ...handle.initialSpawn } : { ...meteor.spawn },
+              initialTarget: handle.initialTarget ? { ...handle.initialTarget } : { ...meteor.target },
+            };
+            updateEditorOverlay();
+            resetEditorPaintingState();
             return;
           }
-          const handle = pickMeteorHandleAt(world.x, world.y);
-          if (handle) {
-            const meteors = ensureEditorMeteors();
-            const meteor = meteors[handle.index];
-            if (meteor) {
-              editorState.selectedMeteor = handle.index;
-              editorCancelPendingMeteor();
-              editorState.isPlacingMeteor = false;
-              editorState.pendingMeteor = null;
-              editorState.dragging = {
-                type: 'meteor',
-                index: handle.index,
-                handle: handle.handle,
-                offsetX: handle.offsetX || 0,
-                offsetY: handle.offsetY || 0,
-                startPointer: handle.startPointer ? { ...handle.startPointer } : { ...world },
-                initialSpawn: handle.initialSpawn ? { ...handle.initialSpawn } : { ...meteor.spawn },
-                initialTarget: handle.initialTarget ? { ...handle.initialTarget } : { ...meteor.target },
-              };
-              updateEditorOverlay();
-            }
-            resetPainting();
+        }
+
+        const hole = findBlackHoleNear(world.x, world.y, 1.15);
+        if (hole) {
+          const holes = ensureEditorBlackHoles();
+          const index = holes.indexOf(hole);
+          if (index !== -1) {
+            editorState.dragging = {
+              type: 'blackHole',
+              index,
+              offsetX: hole.x - world.x,
+              offsetY: hole.y - world.y,
+            };
+            resetEditorPaintingState();
             return;
           }
+        }
+
+        if (option === 'blackHole') {
+          editorPlaceBlackHole(world.x, world.y);
+          resetEditorPaintingState();
+          return;
+        }
+
+        if (option === 'meteor') {
           const selected = findMeteorIndexNear(world.x, world.y, 1.3);
           if (selected !== -1) {
             editorState.selectedMeteor = selected;
             editorCancelPendingMeteor();
             updateEditorOverlay();
-            resetPainting();
+            resetEditorPaintingState();
             return;
           }
           editorStartMeteorPlacement(world.x, world.y);
           return;
         }
-        if (option === 'spawn') {
-          const spawnDist = Math.hypot(world.x - editorState.spawn.x, world.y - editorState.spawn.y);
-          if (spawnDist <= 40) {
-            editorState.dragging = {
-              type: 'spawn',
-              offsetX: editorState.spawn.x - world.x,
-              offsetY: editorState.spawn.y - world.y,
-            };
-            resetPainting();
-            return;
-          }
-        } else if (option === 'landing') {
-          const margin = 20;
-          const padCenterX = pad.x + pad.w / 2;
-          const padCenterY = pad.y + pad.h / 2;
-          const withinX = world.x >= pad.x - margin && world.x <= pad.x + pad.w + margin;
-          const withinY = world.y >= pad.y - margin && world.y <= pad.y + pad.h + margin;
-          if (withinX && withinY) {
-            editorState.dragging = {
-              type: 'landing',
-              offsetX: padCenterX - world.x,
-              offsetY: padCenterY - world.y,
-            };
-            resetPainting();
-            return;
-          }
-        }
-        editorState.isPainting = true;
-        editorState.hasMoved = false;
-        editorState.lastPointer = { ...world };
-        editorState.pendingPaintStart = { ...world };
-        editorState.activeBrushMode = e.altKey ? 'carve' : 'add';
-      });
 
-      canvas.addEventListener('mousemove', (e) => {
+        if (option === 'spawn') {
+          editorPlaceSpawn(world.x, world.y);
+          editorState.dragging = {
+            type: 'spawn',
+            offsetX: editorState.spawn.x - world.x,
+            offsetY: editorState.spawn.y - world.y,
+          };
+          terrain.dirtyRender = true;
+          resetEditorPaintingState();
+          return;
+        }
+
+        if (option === 'landing') {
+          editorPlaceLanding(world.x, world.y);
+          const newCenterX = pad.x + pad.w / 2;
+          const newCenterY = pad.y + pad.h / 2;
+          editorState.dragging = {
+            type: 'landing',
+            offsetX: newCenterX - world.x,
+            offsetY: newCenterY - world.y,
+          };
+          terrain.dirtyRender = true;
+          resetEditorPaintingState();
+          return;
+        }
+
+        if (option === 'terrain') {
+          editorState.isPainting = true;
+          editorState.hasMoved = false;
+          editorState.lastPointer = { ...world };
+          editorState.pendingPaintStart = { ...world };
+          editorState.activeBrushMode = altKey ? 'carve' : 'add';
+        } else {
+          resetEditorPaintingState();
+        }
+      }
+
+      function continueEditorInteraction(world) {
         if (appMode !== APP_MODE.EDITOR) return;
-        const world = screenToWorld(e.offsetX, e.offsetY);
         editorState.cursorWorld = { ...world };
         const dragging = editorState.dragging;
         if (dragging) {
@@ -2270,6 +3393,7 @@ let camY = null;
           }
         }
         if (!editorState.isPainting) return;
+        if (option !== 'terrain') return;
         const prev = editorState.lastPointer;
         if (!editorState.hasMoved) {
           const reference = editorState.pendingPaintStart || prev;
@@ -2288,30 +3412,19 @@ let camY = null;
           editorStroke(prev, world, editorState.activeBrushMode);
         }
         editorState.lastPointer = { ...world };
-      });
-
-      function endEditorStroke(world) {
-        if (!editorState.isPainting) return;
-        editorState.isPainting = false;
-        const moved = editorState.hasMoved;
-        editorState.hasMoved = false;
-        editorState.pendingPaintStart = null;
-        editorState.lastPointer = null;
-        const option = editorState.placementOptions[editorState.placementIndex];
-        if (option === 'blackHole' || option === 'meteor') return;
-        if (!moved) {
-          if (option === 'spawn') {
-            editorPlaceSpawn(world.x, world.y);
-          } else if (option === 'landing') {
-            editorPlaceLanding(world.x, world.y);
-          }
-        }
       }
 
-      canvas.addEventListener('mouseup', (e) => {
+      function finishEditorInteraction(world) {
         if (appMode !== APP_MODE.EDITOR) return;
-        if (e.button !== 0) return;
-        const world = screenToWorld(e.offsetX, e.offsetY);
+        const resolved = world || (editorState.cursorWorld ? { ...editorState.cursorWorld } : null);
+        if (!resolved) {
+          if (editorState.dragging) {
+            editorState.dragging = null;
+          }
+          resetEditorPaintingState();
+          return;
+        }
+        editorState.cursorWorld = { ...resolved };
         if (editorState.dragging) {
           const dragging = editorState.dragging;
           editorState.dragging = null;
@@ -2333,16 +3446,15 @@ let camY = null;
         const option = editorState.placementOptions[editorState.placementIndex];
         if (option === 'meteor') {
           if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
-            editorState.pendingMeteor.target = { ...world };
+            editorState.pendingMeteor.target = { ...resolved };
             editorCommitPendingMeteor();
           }
           return;
         }
-        endEditorStroke(world);
-      });
+        endEditorStroke(resolved);
+      }
 
-      canvas.addEventListener('mouseleave', () => {
-        if (appMode !== APP_MODE.EDITOR) return;
+      function cancelEditorInteraction() {
         editorState.cursorWorld = null;
         if (editorState.dragging) {
           editorState.dragging = null;
@@ -2355,7 +3467,100 @@ let camY = null;
         editorState.lastPointer = null;
         editorState.hasMoved = false;
         editorState.pendingPaintStart = null;
+      }
+
+      function touchToWorld(touch) {
+        if (!touch) return null;
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        return screenToWorld(x, y);
+      }
+
+      function endEditorStroke(world) {
+        if (!editorState.isPainting) return;
+        editorState.isPainting = false;
+        const moved = editorState.hasMoved;
+        editorState.hasMoved = false;
+        const option = editorState.placementOptions[editorState.placementIndex];
+        const seedPoint = editorState.pendingPaintStart;
+        editorState.pendingPaintStart = null;
+        editorState.lastPointer = null;
+        if (option === 'terrain') {
+          if (!moved && seedPoint) {
+            editorApplyBrush(seedPoint.x, seedPoint.y, editorState.activeBrushMode);
+          }
+          return;
+        }
+        if (option === 'blackHole' || option === 'meteor') return;
+        if (!moved) {
+          if (option === 'spawn') {
+            editorPlaceSpawn(world.x, world.y);
+          } else if (option === 'landing') {
+            editorPlaceLanding(world.x, world.y);
+          }
+        }
+      }
+
+      canvas.addEventListener('mousedown', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (event.button !== 0) return;
+        const world = screenToWorld(event.offsetX, event.offsetY);
+        beginEditorInteraction(world, { altKey: event.altKey });
       });
+
+      canvas.addEventListener('mousemove', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        const world = screenToWorld(event.offsetX, event.offsetY);
+        continueEditorInteraction(world);
+      });
+
+      canvas.addEventListener('mouseup', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (event.button !== 0) return;
+        const world = screenToWorld(event.offsetX, event.offsetY);
+        finishEditorInteraction(world);
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        cancelEditorInteraction();
+      });
+
+      canvas.addEventListener('touchstart', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (!event.changedTouches || event.changedTouches.length === 0) return;
+        event.preventDefault();
+        const world = touchToWorld(event.changedTouches[0]);
+        if (world) {
+          beginEditorInteraction(world);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (!event.changedTouches || event.changedTouches.length === 0) return;
+        event.preventDefault();
+        const world = touchToWorld(event.changedTouches[0]);
+        if (world) {
+          continueEditorInteraction(world);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        event.preventDefault();
+        const world = event.changedTouches && event.changedTouches.length
+          ? touchToWorld(event.changedTouches[0])
+          : null;
+        finishEditorInteraction(world);
+      }, { passive: false });
+
+      canvas.addEventListener('touchcancel', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        event.preventDefault();
+        cancelEditorInteraction();
+      }, { passive: false });
 
       function resetGame(forceTerrain = false, overrides = {}) {
         const {
@@ -2363,6 +3568,7 @@ let camY = null;
           customTerrain = false,
           camera = null,
         } = overrides;
+        hidePostLevelMenu();
         const usingCustomTerrain = !!customTerrain;
         if ((forceTerrain || shouldRegen) && !usingCustomTerrain) {
           const regenIndex = shouldRegen ? nextLevelIndex : currentLevelIndex;
@@ -2372,7 +3578,9 @@ let camY = null;
         if (!usingCustomTerrain) {
           const level = levels[currentLevelIndex];
           const startBuffer = 140;
-          lander.x = Math.min(level.worldWidth * 0.08, level.worldWidth - startBuffer);
+          const preferredStart = Math.max(level.worldWidth * 0.1, width * 0.55);
+          const clampedStart = Math.min(level.worldWidth - startBuffer, preferredStart);
+          lander.x = Math.max(level.worldWidth * 0.08, clampedStart);
           lander.y = 50;
         } else if (spawn) {
           lander.x = spawn.x;
@@ -2414,6 +3622,7 @@ let camY = null;
         for (const key of Object.keys(keys)) {
           if (keys[key]) keys[key] = false;
         }
+        clearVirtualTouchState();
       }
 
       function spawnExplosion(x, y, baseVx, baseVy) {
@@ -2422,8 +3631,11 @@ let camY = null;
         gameOver = true;
         if (appMode === APP_MODE.TEST) {
           message = 'Test failed. Press R to retry or Esc to edit';
+          hidePostLevelMenu();
         } else {
-          message = 'You Crashed! Press R to restart';
+          message = 'You Crashed! Press R to restart or Esc for menu';
+          const upcoming = levels.length > 0 ? levels[(currentLevelIndex + 1) % levels.length].name : null;
+          showPostLevelMenu('failure', message, upcoming);
         }
         audio.stopThrusterImmediate();
         audio.playExplosion();
@@ -2558,9 +3770,14 @@ let camY = null;
         landed = false;
         shouldRegen = false;
         const testMode = appMode === APP_MODE.TEST;
-        message = testMode
-          ? 'Singularity capture! Press R to retry or Esc to edit'
-          : 'Singularity capture! Press R to restart';
+        if (testMode) {
+          message = 'Singularity capture! Press R to retry or Esc to edit';
+          hidePostLevelMenu();
+        } else {
+          message = 'Singularity capture! Press R to restart or N for next level';
+          const upcoming = levels.length > 0 ? levels[(currentLevelIndex + 1) % levels.length].name : null;
+          showPostLevelMenu('failure', message, upcoming);
+        }
         audio.stopThrusterImmediate();
         audio.setThrusterActive(false);
         audio.playDeathTone();
@@ -3220,17 +4437,25 @@ let camY = null;
         const dist = Math.hypot(dx, dy) || 1;
         const dirX = dx / dist;
         const dirY = dy / dist;
+        const speed = Math.max(event.speed, 0.0001);
+        const duration = dist / speed;
         const meteor = {
           id: event.id,
           x: event.spawn.x,
           y: event.spawn.y,
-          vx: dirX * event.speed,
-          vy: dirY * event.speed,
+          vx: dirX * speed,
+          vy: dirY * speed,
           radius: event.radius,
           angle: Math.atan2(dirY, dirX),
           trailTimer: 0,
           exploded: false,
+          spawn: { ...event.spawn },
           target: { ...event.target },
+          pathDx: dx,
+          pathDy: dy,
+          speed,
+          duration,
+          elapsed: 0,
         };
         activeMeteors.push(meteor);
         meteorWarnings = meteorWarnings.filter(w => w.id !== event.id);
@@ -3357,9 +4582,17 @@ let camY = null;
           if (meteor.exploded) {
             continue;
           }
-          meteor.vy += g * dt * METEOR_GRAVITY_SCALE;
-          meteor.x += meteor.vx * dt;
-          meteor.y += meteor.vy * dt;
+          const prevX = meteor.x;
+          const prevY = meteor.y;
+          meteor.elapsed = (meteor.elapsed || 0) + dt;
+          const duration = meteor.duration || 1;
+          const progress = duration > 0 ? Math.min(1, meteor.elapsed / duration) : 1;
+          meteor.x = meteor.spawn.x + meteor.pathDx * progress;
+          meteor.y = meteor.spawn.y + meteor.pathDy * progress;
+          if (dt > 0) {
+            meteor.vx = (meteor.x - prevX) / dt;
+            meteor.vy = (meteor.y - prevY) / dt;
+          }
           meteor.angle = Math.atan2(meteor.vy, meteor.vx);
           meteor.trailTimer += dt;
           while (meteor.trailTimer >= METEOR_TRAIL_INTERVAL) {
@@ -3399,6 +4632,11 @@ let camY = null;
           const groundY = groundYAt(meteor.x, meteor.y);
           if (!meteorRemoved && meteor.y + meteor.radius >= groundY) {
             resolveMeteorImpact(meteor, meteor.x, groundY);
+            meteorRemoved = true;
+          }
+
+          if (!meteorRemoved && meteor.elapsed >= meteor.duration - 0.0001) {
+            resolveMeteorImpact(meteor, meteor.target.x, meteor.target.y);
             meteorRemoved = true;
           }
 
@@ -3992,9 +5230,6 @@ let camY = null;
           ctx.moveTo(cursor.x, cursor.y - 10);
           ctx.lineTo(cursor.x, cursor.y + 10);
           ctx.stroke();
-          const option = editorState.placementOptions[editorState.placementIndex];
-          ctx.fillStyle = '#ffffff';
-          ctx.fillText(labelForPlacement(option), cursor.x + 12, cursor.y - 12);
         }
         ctx.restore();
       }
@@ -4002,15 +5237,15 @@ let camY = null;
       function drawHUD() {
         const isGameplay = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
         if (isGameplay) {
-          info.textContent = `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
-          info.style.display = 'block';
-        } else if (appMode === APP_MODE.EDITOR) {
-          const option = editorState.placementOptions[editorState.placementIndex];
-          info.textContent = `Editor | Active: ${labelForPlacement(option)}`;
-          info.style.display = 'block';
+          setInfoMessage(
+            `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`,
+            'Status'
+          );
         } else {
-          info.textContent = '';
-          info.style.display = 'none';
+          clearInfoMessage();
+        }
+        if (!isGameplay && infoPanel) {
+          infoPanel.classList.remove('debug-hidden');
         }
         if (isGameplay && gameOver) {
           ctx.fillStyle = '#ffffff';
@@ -4027,10 +5262,12 @@ let camY = null;
 
       function drawDebugOverlay(k) {
         // Hide the DOM info panel so it doesn't cover the canvas debug overlay
-        if (typeof info !== 'undefined' && info) {
+        if (infoPanel) {
           const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
           if (gameplayMode) {
-            info.style.display = showDebug ? 'none' : 'block';
+            infoPanel.classList.toggle('debug-hidden', showDebug);
+          } else {
+            infoPanel.classList.remove('debug-hidden');
           }
         }
         if (!showDebug) return;
@@ -4243,11 +5480,15 @@ let camY = null;
             if (appMode === APP_MODE.TEST) {
               shouldRegen = false;
               message = 'Test complete! Press Esc to edit or R to retry';
+              hidePostLevelMenu();
             } else {
-              shouldRegen = true;
+              shouldRegen = false;
               nextLevelIndex = (currentLevelIndex + 1) % levels.length;
               const upcoming = levels[nextLevelIndex].name;
-              message = `Nice landing! Press R to explore ${upcoming}`;
+              message = upcoming
+                ? `Nice landing! Press R to restart or N for ${upcoming}`
+                : 'Nice landing! Press R to restart or N for the next level';
+              showPostLevelMenu('success', message, upcoming);
             }
             const touchdownY = touchingFeet.length
               ? touchingFeet.reduce((min, pt) => Math.min(min, pt.surfaceY ?? min), touchingFeet[0].surfaceY ?? lander.y)
@@ -4348,7 +5589,12 @@ let camY = null;
         requestAnimationFrame(loop);
       }
 
-      window.addEventListener('resize', resizeCanvas);
+      window.addEventListener('resize', () => {
+        resizeCanvas();
+        if (manualTouchPreference === null) {
+          refreshTouchControlsPreference();
+        }
+      });
       resizeCanvas();
       enterMenu();
       updateEditorOverlay();
