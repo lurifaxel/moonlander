@@ -27,6 +27,7 @@
       display: block;
       background: transparent;
       flex-shrink: 0;
+      touch-action: none;
     }
     #gameShell {
       position: relative;
@@ -106,11 +107,12 @@
       border-color: rgba(255, 255, 255, 0.6);
     }
     #touchControls .menu-button {
-      min-width: 104px;
+      min-width: 56px;
+      min-height: 52px;
       border-radius: 999px;
-      font-size: 10px;
-      letter-spacing: 0.14em;
-      padding: 12px 18px;
+      font-size: 9px;
+      letter-spacing: 0.16em;
+      padding: 8px 14px;
     }
     #touchControls .action button {
       min-width: 72px;
@@ -317,11 +319,74 @@
     }
     #info {
       position: absolute;
-      top: 10px;
-      left: 10px;
-      color: white;
-      font-size: 14px;
+      top: 12px;
+      left: 12px;
+      color: #f0f6ff;
+      font-size: 13px;
+      pointer-events: auto;
+      background: rgba(10, 16, 28, 0.82);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 12px;
+      padding: 10px 12px;
+      max-width: min(320px, calc(100vw - 24px));
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
+      backdrop-filter: blur(8px);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 8;
+    }
+    #info.hidden {
+      display: none !important;
+    }
+    #info .info-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #info .info-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.72;
+    }
+    #info .info-toggle {
+      pointer-events: auto;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(18, 26, 40, 0.65);
+      color: #f0f6ff;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      padding: 4px 12px;
+      text-transform: uppercase;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    #info .info-toggle:focus-visible {
+      outline: 2px solid #8fdfff;
+      outline-offset: 2px;
+    }
+    #info .info-toggle:hover,
+    #info .info-toggle:active {
+      border-color: rgba(255, 255, 255, 0.45);
+      background: rgba(22, 32, 50, 0.8);
+    }
+    #info .info-body {
+      line-height: 1.45;
       pointer-events: none;
+      font-size: 13px;
+    }
+    #info.collapsed .info-body {
+      display: none;
+    }
+    #info.collapsed {
+      padding-bottom: 8px;
+    }
+    #info.debug-hidden {
+      visibility: hidden;
     }
     .hidden {
       display: none !important;
@@ -543,7 +608,13 @@
     </div>
   </div>
   <button id="touchToggle" class="hidden" type="button" aria-pressed="false">Touch Controls</button>
-  <div id="info"></div>
+  <div id="info" class="hidden" aria-live="polite" aria-atomic="true">
+    <div class="info-header">
+      <span class="info-title">Status</span>
+      <button type="button" class="info-toggle" aria-expanded="true">Hide info</button>
+    </div>
+    <div class="info-body"></div>
+  </div>
   <div id="startMenu" class="menu-overlay">
     <div class="menu-panel">
       <h1>Moon Lander</h1>
@@ -569,7 +640,10 @@
     (() => {
       const canvas = document.getElementById('gameCanvas');
       const ctx = canvas.getContext('2d');
-      const info = document.getElementById('info');
+      const infoPanel = document.getElementById('info');
+      const infoBody = infoPanel ? infoPanel.querySelector('.info-body') : null;
+      const infoToggleButton = infoPanel ? infoPanel.querySelector('.info-toggle') : null;
+      const infoTitle = infoPanel ? infoPanel.querySelector('.info-title') : null;
       const startMenu = document.getElementById('startMenu');
       const menuPlayBtn = document.getElementById('menuPlay');
       const menuEditorBtn = document.getElementById('menuEditor');
@@ -585,6 +659,47 @@
       const editorToolButtons = editorToolBar
         ? Array.from(editorToolBar.querySelectorAll('button[data-tool]'))
         : [];
+
+      let infoCollapsed = false;
+
+      function setInfoTitle(text) {
+        if (infoTitle) {
+          infoTitle.textContent = text || 'Status';
+        }
+      }
+
+      function applyInfoCollapsedState() {
+        if (!infoPanel) return;
+        infoPanel.classList.toggle('collapsed', infoCollapsed);
+        if (infoToggleButton) {
+          infoToggleButton.setAttribute('aria-expanded', (!infoCollapsed).toString());
+          infoToggleButton.textContent = infoCollapsed ? 'Show info' : 'Hide info';
+        }
+      }
+
+      function setInfoMessage(text, title = null) {
+        if (!infoPanel || !infoBody) return;
+        if (title !== null) {
+          setInfoTitle(title);
+        }
+        infoBody.textContent = text || '';
+        const hasText = !!text;
+        if (hasText) {
+          infoPanel.classList.remove('hidden');
+          infoPanel.setAttribute('aria-hidden', 'false');
+          applyInfoCollapsedState();
+        } else {
+          infoPanel.classList.add('hidden');
+          infoPanel.setAttribute('aria-hidden', 'true');
+        }
+      }
+
+      function clearInfoMessage() {
+        if (!infoPanel || !infoBody) return;
+        infoBody.textContent = '';
+        infoPanel.classList.add('hidden');
+        infoPanel.setAttribute('aria-hidden', 'true');
+      }
 
       const TOUCH_PREF_KEY = 'moonlander.touchControls';
       let manualTouchPreference = null;
@@ -947,6 +1062,16 @@
           audio.unlock();
           if (appMode !== APP_MODE.PLAY) return;
           enterMenu();
+        });
+      }
+      if (infoToggleButton && infoPanel) {
+        infoToggleButton.addEventListener('click', () => {
+          infoCollapsed = !infoCollapsed;
+          applyInfoCollapsedState();
+          if (infoBody && infoBody.textContent && infoBody.textContent.length) {
+            infoPanel.classList.remove('hidden');
+            infoPanel.setAttribute('aria-hidden', 'false');
+          }
         });
       }
       if (editorToolBar) {
@@ -2607,7 +2732,7 @@ let camY = null;
         editorState.active = false;
         startMenu.classList.remove('hidden');
         updateEditorOverlay();
-        info.textContent = '';
+        clearInfoMessage();
         audio.setThrusterActive(false);
         keys.Space = false;
         for (const key of Object.keys(keys)) {
@@ -2925,127 +3050,162 @@ let camY = null;
         updateEditorOverlay();
       }, { passive: false });
 
-      canvas.addEventListener('mousedown', (e) => {
+      function resetEditorPaintingState() {
+        editorState.isPainting = false;
+        editorState.hasMoved = false;
+        editorState.pendingPaintStart = null;
+        editorState.lastPointer = null;
+      }
+
+      function beginEditorInteraction(world, { altKey = false } = {}) {
         if (appMode !== APP_MODE.EDITOR) return;
-        if (e.button !== 0) return;
-        const world = screenToWorld(e.offsetX, e.offsetY);
-        const option = editorState.placementOptions[editorState.placementIndex];
+        if (!editorState.placementOptions.length) return;
         editorState.cursorWorld = { ...world };
         editorState.dragging = null;
-        const resetPainting = () => {
-          editorState.isPainting = false;
-          editorState.hasMoved = false;
-          editorState.pendingPaintStart = null;
-          editorState.lastPointer = null;
-        };
-        if (option === 'blackHole') {
-          if (e.altKey) {
-            editorRemoveBlackHole(world.x, world.y);
-          } else {
-            const hole = findBlackHoleNear(world.x, world.y, 1.15);
-            if (hole) {
-              const holes = ensureEditorBlackHoles();
-              const index = holes.indexOf(hole);
-              if (index !== -1) {
-                editorState.dragging = {
-                  type: 'blackHole',
-                  index,
-                  offsetX: hole.x - world.x,
-                  offsetY: hole.y - world.y,
-                };
-              }
-            }
-            if (!editorState.dragging) {
-              editorPlaceBlackHole(world.x, world.y);
-            }
-          }
-          resetPainting();
+        const option = editorState.placementOptions[editorState.placementIndex];
+        if (!option) {
+          resetEditorPaintingState();
           return;
         }
-        if (option === 'meteor') {
-          if (e.altKey) {
-            if (!editorRemoveMeteor(world.x, world.y)) {
-              editorState.selectedMeteor = -1;
-            }
+        if (option === 'blackHole' && altKey) {
+          editorRemoveBlackHole(world.x, world.y);
+          resetEditorPaintingState();
+          return;
+        }
+        if (option === 'meteor' && altKey) {
+          if (!editorRemoveMeteor(world.x, world.y)) {
+            editorState.selectedMeteor = -1;
+          }
+          editorCancelPendingMeteor();
+          resetEditorPaintingState();
+          return;
+        }
+
+        const spawnDist = Math.hypot(world.x - editorState.spawn.x, world.y - editorState.spawn.y);
+        if (spawnDist <= 40) {
+          editorState.dragging = {
+            type: 'spawn',
+            offsetX: editorState.spawn.x - world.x,
+            offsetY: editorState.spawn.y - world.y,
+          };
+          resetEditorPaintingState();
+          return;
+        }
+
+        const margin = 20;
+        const padCenterX = pad.x + pad.w / 2;
+        const padCenterY = pad.y + pad.h / 2;
+        const withinPadX = world.x >= pad.x - margin && world.x <= pad.x + pad.w + margin;
+        const withinPadY = world.y >= pad.y - margin && world.y <= pad.y + pad.h + margin;
+        if (withinPadX && withinPadY) {
+          editorState.dragging = {
+            type: 'landing',
+            offsetX: padCenterX - world.x,
+            offsetY: padCenterY - world.y,
+          };
+          resetEditorPaintingState();
+          return;
+        }
+
+        const handle = pickMeteorHandleAt(world.x, world.y);
+        if (handle) {
+          const meteors = ensureEditorMeteors();
+          const meteor = meteors[handle.index];
+          if (meteor) {
+            editorState.selectedMeteor = handle.index;
             editorCancelPendingMeteor();
+            editorState.isPlacingMeteor = false;
+            editorState.pendingMeteor = null;
+            editorState.dragging = {
+              type: 'meteor',
+              index: handle.index,
+              handle: handle.handle,
+              offsetX: handle.offsetX || 0,
+              offsetY: handle.offsetY || 0,
+              startPointer: handle.startPointer ? { ...handle.startPointer } : { ...world },
+              initialSpawn: handle.initialSpawn ? { ...handle.initialSpawn } : { ...meteor.spawn },
+              initialTarget: handle.initialTarget ? { ...handle.initialTarget } : { ...meteor.target },
+            };
+            updateEditorOverlay();
+            resetEditorPaintingState();
             return;
           }
-          const handle = pickMeteorHandleAt(world.x, world.y);
-          if (handle) {
-            const meteors = ensureEditorMeteors();
-            const meteor = meteors[handle.index];
-            if (meteor) {
-              editorState.selectedMeteor = handle.index;
-              editorCancelPendingMeteor();
-              editorState.isPlacingMeteor = false;
-              editorState.pendingMeteor = null;
-              editorState.dragging = {
-                type: 'meteor',
-                index: handle.index,
-                handle: handle.handle,
-                offsetX: handle.offsetX || 0,
-                offsetY: handle.offsetY || 0,
-                startPointer: handle.startPointer ? { ...handle.startPointer } : { ...world },
-                initialSpawn: handle.initialSpawn ? { ...handle.initialSpawn } : { ...meteor.spawn },
-                initialTarget: handle.initialTarget ? { ...handle.initialTarget } : { ...meteor.target },
-              };
-              updateEditorOverlay();
-            }
-            resetPainting();
+        }
+
+        const hole = findBlackHoleNear(world.x, world.y, 1.15);
+        if (hole) {
+          const holes = ensureEditorBlackHoles();
+          const index = holes.indexOf(hole);
+          if (index !== -1) {
+            editorState.dragging = {
+              type: 'blackHole',
+              index,
+              offsetX: hole.x - world.x,
+              offsetY: hole.y - world.y,
+            };
+            resetEditorPaintingState();
             return;
           }
+        }
+
+        if (option === 'blackHole') {
+          editorPlaceBlackHole(world.x, world.y);
+          resetEditorPaintingState();
+          return;
+        }
+
+        if (option === 'meteor') {
           const selected = findMeteorIndexNear(world.x, world.y, 1.3);
           if (selected !== -1) {
             editorState.selectedMeteor = selected;
             editorCancelPendingMeteor();
             updateEditorOverlay();
-            resetPainting();
+            resetEditorPaintingState();
             return;
           }
           editorStartMeteorPlacement(world.x, world.y);
           return;
         }
+
         if (option === 'spawn') {
-          const spawnDist = Math.hypot(world.x - editorState.spawn.x, world.y - editorState.spawn.y);
-          if (spawnDist <= 40) {
-            editorState.dragging = {
-              type: 'spawn',
-              offsetX: editorState.spawn.x - world.x,
-              offsetY: editorState.spawn.y - world.y,
-            };
-            resetPainting();
-            return;
-          }
-        } else if (option === 'landing') {
-          const margin = 20;
-          const padCenterX = pad.x + pad.w / 2;
-          const padCenterY = pad.y + pad.h / 2;
-          const withinX = world.x >= pad.x - margin && world.x <= pad.x + pad.w + margin;
-          const withinY = world.y >= pad.y - margin && world.y <= pad.y + pad.h + margin;
-          if (withinX && withinY) {
-            editorState.dragging = {
-              type: 'landing',
-              offsetX: padCenterX - world.x,
-              offsetY: padCenterY - world.y,
-            };
-            resetPainting();
-            return;
-          }
+          editorPlaceSpawn(world.x, world.y);
+          editorState.dragging = {
+            type: 'spawn',
+            offsetX: editorState.spawn.x - world.x,
+            offsetY: editorState.spawn.y - world.y,
+          };
+          terrain.dirtyRender = true;
+          resetEditorPaintingState();
+          return;
         }
+
+        if (option === 'landing') {
+          editorPlaceLanding(world.x, world.y);
+          const newCenterX = pad.x + pad.w / 2;
+          const newCenterY = pad.y + pad.h / 2;
+          editorState.dragging = {
+            type: 'landing',
+            offsetX: newCenterX - world.x,
+            offsetY: newCenterY - world.y,
+          };
+          terrain.dirtyRender = true;
+          resetEditorPaintingState();
+          return;
+        }
+
         if (option === 'terrain') {
           editorState.isPainting = true;
           editorState.hasMoved = false;
           editorState.lastPointer = { ...world };
           editorState.pendingPaintStart = { ...world };
-          editorState.activeBrushMode = e.altKey ? 'carve' : 'add';
+          editorState.activeBrushMode = altKey ? 'carve' : 'add';
         } else {
-          resetPainting();
+          resetEditorPaintingState();
         }
-      });
+      }
 
-      canvas.addEventListener('mousemove', (e) => {
+      function continueEditorInteraction(world) {
         if (appMode !== APP_MODE.EDITOR) return;
-        const world = screenToWorld(e.offsetX, e.offsetY);
         editorState.cursorWorld = { ...world };
         const dragging = editorState.dragging;
         if (dragging) {
@@ -3153,7 +3313,70 @@ let camY = null;
           editorStroke(prev, world, editorState.activeBrushMode);
         }
         editorState.lastPointer = { ...world };
-      });
+      }
+
+      function finishEditorInteraction(world) {
+        if (appMode !== APP_MODE.EDITOR) return;
+        const resolved = world || (editorState.cursorWorld ? { ...editorState.cursorWorld } : null);
+        if (!resolved) {
+          if (editorState.dragging) {
+            editorState.dragging = null;
+          }
+          resetEditorPaintingState();
+          return;
+        }
+        editorState.cursorWorld = { ...resolved };
+        if (editorState.dragging) {
+          const dragging = editorState.dragging;
+          editorState.dragging = null;
+          if (dragging.type === 'meteor') {
+            const meteors = ensureEditorMeteors();
+            if (dragging.index >= 0 && dragging.index < meteors.length) {
+              const meteor = meteors[dragging.index];
+              clampMeteorSpawnPosition(meteor);
+              clampMeteorTargetPosition(meteor);
+              terrain.meteors = meteors;
+              editorState.meteors = meteors;
+            }
+            updateEditorOverlay();
+          } else if (dragging.type === 'blackHole') {
+            terrain.blackHoles = ensureEditorBlackHoles();
+          }
+          return;
+        }
+        const option = editorState.placementOptions[editorState.placementIndex];
+        if (option === 'meteor') {
+          if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
+            editorState.pendingMeteor.target = { ...resolved };
+            editorCommitPendingMeteor();
+          }
+          return;
+        }
+        endEditorStroke(resolved);
+      }
+
+      function cancelEditorInteraction() {
+        editorState.cursorWorld = null;
+        if (editorState.dragging) {
+          editorState.dragging = null;
+        }
+        if (editorState.isPlacingMeteor) {
+          editorCancelPendingMeteor();
+        }
+        if (!editorState.isPainting) return;
+        editorState.isPainting = false;
+        editorState.lastPointer = null;
+        editorState.hasMoved = false;
+        editorState.pendingPaintStart = null;
+      }
+
+      function touchToWorld(touch) {
+        if (!touch) return null;
+        const rect = canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        return screenToWorld(x, y);
+      }
 
       function endEditorStroke(world) {
         if (!editorState.isPainting) return;
@@ -3180,54 +3403,65 @@ let camY = null;
         }
       }
 
-      canvas.addEventListener('mouseup', (e) => {
+      canvas.addEventListener('mousedown', (event) => {
         if (appMode !== APP_MODE.EDITOR) return;
-        if (e.button !== 0) return;
-        const world = screenToWorld(e.offsetX, e.offsetY);
-        if (editorState.dragging) {
-          const dragging = editorState.dragging;
-          editorState.dragging = null;
-          if (dragging.type === 'meteor') {
-            const meteors = ensureEditorMeteors();
-            if (dragging.index >= 0 && dragging.index < meteors.length) {
-              const meteor = meteors[dragging.index];
-              clampMeteorSpawnPosition(meteor);
-              clampMeteorTargetPosition(meteor);
-              terrain.meteors = meteors;
-              editorState.meteors = meteors;
-            }
-            updateEditorOverlay();
-          } else if (dragging.type === 'blackHole') {
-            terrain.blackHoles = ensureEditorBlackHoles();
-          }
-          return;
-        }
-        const option = editorState.placementOptions[editorState.placementIndex];
-        if (option === 'meteor') {
-          if (editorState.isPlacingMeteor && editorState.pendingMeteor) {
-            editorState.pendingMeteor.target = { ...world };
-            editorCommitPendingMeteor();
-          }
-          return;
-        }
-        endEditorStroke(world);
+        if (event.button !== 0) return;
+        const world = screenToWorld(event.offsetX, event.offsetY);
+        beginEditorInteraction(world, { altKey: event.altKey });
+      });
+
+      canvas.addEventListener('mousemove', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        const world = screenToWorld(event.offsetX, event.offsetY);
+        continueEditorInteraction(world);
+      });
+
+      canvas.addEventListener('mouseup', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (event.button !== 0) return;
+        const world = screenToWorld(event.offsetX, event.offsetY);
+        finishEditorInteraction(world);
       });
 
       canvas.addEventListener('mouseleave', () => {
         if (appMode !== APP_MODE.EDITOR) return;
-        editorState.cursorWorld = null;
-        if (editorState.dragging) {
-          editorState.dragging = null;
-        }
-        if (editorState.isPlacingMeteor) {
-          editorCancelPendingMeteor();
-        }
-        if (!editorState.isPainting) return;
-        editorState.isPainting = false;
-        editorState.lastPointer = null;
-        editorState.hasMoved = false;
-        editorState.pendingPaintStart = null;
+        cancelEditorInteraction();
       });
+
+      canvas.addEventListener('touchstart', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (!event.changedTouches || event.changedTouches.length === 0) return;
+        event.preventDefault();
+        const world = touchToWorld(event.changedTouches[0]);
+        if (world) {
+          beginEditorInteraction(world);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchmove', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        if (!event.changedTouches || event.changedTouches.length === 0) return;
+        event.preventDefault();
+        const world = touchToWorld(event.changedTouches[0]);
+        if (world) {
+          continueEditorInteraction(world);
+        }
+      }, { passive: false });
+
+      canvas.addEventListener('touchend', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        event.preventDefault();
+        const world = event.changedTouches && event.changedTouches.length
+          ? touchToWorld(event.changedTouches[0])
+          : null;
+        finishEditorInteraction(world);
+      }, { passive: false });
+
+      canvas.addEventListener('touchcancel', (event) => {
+        if (appMode !== APP_MODE.EDITOR) return;
+        event.preventDefault();
+        cancelEditorInteraction();
+      }, { passive: false });
 
       function resetGame(forceTerrain = false, overrides = {}) {
         const {
@@ -4907,15 +5141,18 @@ let camY = null;
       function drawHUD() {
         const isGameplay = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
         if (isGameplay) {
-          info.textContent = `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
-          info.style.display = 'block';
+          setInfoMessage(
+            `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`,
+            'Status'
+          );
         } else if (appMode === APP_MODE.EDITOR) {
           const option = editorState.placementOptions[editorState.placementIndex];
-          info.textContent = `Editor | Active: ${labelForPlacement(option)}`;
-          info.style.display = 'block';
+          setInfoMessage(`Editor | Active: ${labelForPlacement(option)}`, 'Editor');
         } else {
-          info.textContent = '';
-          info.style.display = 'none';
+          clearInfoMessage();
+        }
+        if (!isGameplay && infoPanel) {
+          infoPanel.classList.remove('debug-hidden');
         }
         if (isGameplay && gameOver) {
           ctx.fillStyle = '#ffffff';
@@ -4932,10 +5169,12 @@ let camY = null;
 
       function drawDebugOverlay(k) {
         // Hide the DOM info panel so it doesn't cover the canvas debug overlay
-        if (typeof info !== 'undefined' && info) {
+        if (infoPanel) {
           const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
           if (gameplayMode) {
-            info.style.display = showDebug ? 'none' : 'block';
+            infoPanel.classList.toggle('debug-hidden', showDebug);
+          } else {
+            infoPanel.classList.remove('debug-hidden');
           }
         }
         if (!showDebug) return;

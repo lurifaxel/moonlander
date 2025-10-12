@@ -27,8 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Enlarged and centered the playfield; the canvas now expands to fill the viewport above touch/tool overlays while capping at 1280×1400 for consistent visibility.
 - Level editor meteors feature clickable timing/speed/size inputs, digit hotkeys (1–5) for tool selection, and always spawn from above the visible playfield.
-- Level editor entities (spawn point, landing zone, black holes, and meteor handles) can now be dragged to reposition or retarget hazards directly on the canvas.
-- Mobile touch HUD refined into a low-profile SNES-inspired footer with slimmer outline controls, side-by-side rotate arrows, centered menus, and a delayed post-level overlay that only offers Next after successful landings (still supporting `R` restart / `N` advance).
+- Level editor entities (spawn point, landing zone, black holes, and meteor handles) now drag or tap-move regardless of the active tool, and spawn/landing can be relocated with a single click or touch.
+- Terrain sculpting recognizes continuous touch drags, preventing long-press scrolling while allowing brush strokes to be painted on coarse pointers.
+- Mobile touch HUD refined into a low-profile SNES-inspired footer with slimmer outline controls, a dedicated right-aligned thrust button, a scaled-down Start button, centered menus, and a delayed post-level overlay that only offers Next after successful landings (still supporting `R` restart / `N` advance).
+- The floating info/status panel gained a collapsible header so editors can tuck it away while working on cramped screens.
 
 ## [0.1.0] - 2025-10-04
 
