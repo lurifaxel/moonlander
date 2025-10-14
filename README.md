@@ -16,7 +16,8 @@ A 2D lunar-lander style game with cartoon physics:
 - Start menu with a built-in level editor for custom terrain, spawn, and landing pads.
 
 ## Run
-Open `index.html` in a modern browser (Chrome/Firefox). No build step.
+Open `index.html` in a modern desktop browser (Chrome/Firefox). For consistent asset loading you can optionally launch a simple static file server (for example, `python -m http.server`) from the repository root and browse to `http://localhost:8000/index.html`.
+
 The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
 
 ## Controls

@@ -77,6 +77,101 @@
     #startMenu button.secondary:hover {
       background: #2b7cb3;
     }
+    #startMenu .menu-section {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 320px;
+    }
+    #startMenu .menu-label {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+    }
+    #startMenu .menu-input {
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      background: rgba(15, 24, 40, 0.85);
+      color: #f8fbff;
+      font-size: 16px;
+    }
+    #startMenu .menu-input:focus {
+      outline: none;
+      border-color: #8fdfff;
+      box-shadow: 0 0 0 1px rgba(143, 223, 255, 0.6);
+    }
+    #startMenu .menu-error {
+      font-size: 13px;
+      color: #ff7373;
+      text-align: left;
+    }
+    #startMenu .menu-status {
+      font-size: 13px;
+      color: #8fdfff;
+      text-align: center;
+      max-width: 320px;
+    }
+    #startMenu .menu-status.error {
+      color: #ffb37a;
+    }
+    #startMenu .menu-actions {
+      flex-direction: row;
+      align-items: center;
+    }
+    #startMenu .menu-actions button {
+      flex: 1 1 0;
+    }
+    #startMenu button.wide {
+      width: 100%;
+    }
+    #levelList {
+      width: 100%;
+      max-width: 360px;
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding-right: 4px;
+    }
+    #levelList::-webkit-scrollbar {
+      width: 8px;
+    }
+    #levelList::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+    }
+    #levelList .level-entry {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: rgba(20, 28, 44, 0.9);
+      border: 1px solid rgba(143, 223, 255, 0.15);
+    }
+    #levelList .level-entry button {
+      align-self: flex-start;
+      margin-top: 4px;
+      min-width: 0;
+    }
+    #levelList .level-entry h3 {
+      margin: 0;
+      font-size: 16px;
+      color: #f8fbff;
+    }
+    #levelList .level-entry p {
+      margin: 0;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.75);
+    }
+    #levelList .level-meta {
+      font-size: 12px;
+      color: rgba(143, 223, 255, 0.75);
+    }
     #editorPanel {
       position: absolute;
       top: 12px;
@@ -162,6 +257,67 @@
       font-size: 12px;
       color: rgba(255, 255, 255, 0.7);
     }
+    #editorPanel .editor-save {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      background: rgba(18, 26, 42, 0.85);
+      border: 1px solid rgba(143, 223, 255, 0.2);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    #editorPanel .editor-save button {
+      align-self: flex-start;
+      background: #2ecc71;
+      color: #0b101d;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #editorPanel .editor-save button.secondary {
+      background: #3498db;
+      color: #f5f9ff;
+    }
+    #editorPanel .editor-save-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #editorPanel .editor-save-form.hidden {
+      display: none;
+    }
+    #editorPanel .editor-save-form label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    #editorPanel .editor-save-form input,
+    #editorPanel .editor-save-form textarea {
+      border-radius: 4px;
+      border: 1px solid rgba(143, 223, 255, 0.35);
+      background: rgba(8, 12, 22, 0.85);
+      color: #f0f6ff;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      resize: vertical;
+    }
+    #editorPanel .editor-save-actions {
+      display: flex;
+      gap: 8px;
+    }
+    #editorPanel .editor-save-status {
+      font-size: 12px;
+      color: #8fdfff;
+    }
+    #editorPanel .editor-save-status.error {
+      color: #ff8f8f;
+    }
   </style>
 </head>
 <body>
@@ -169,8 +325,18 @@
   <div id="info"></div>
   <div id="startMenu">
     <h1>Moon Lander</h1>
-    <button id="menuPlay">Play</button>
-    <button id="menuEditor" class="secondary">Create Level</button>
+    <div class="menu-section">
+      <label class="menu-label" for="playerName">Pilot Name</label>
+      <input id="playerName" class="menu-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" />
+      <div id="nameError" class="menu-error hidden">Please enter your name to begin.</div>
+    </div>
+    <div class="menu-section menu-actions">
+      <button id="menuGenerate">Generate Level</button>
+      <button id="menuSelect" class="secondary">Select Level</button>
+    </div>
+    <div id="levelList" class="menu-section hidden"></div>
+    <div id="menuStatus" class="menu-status hidden"></div>
+    <button id="menuEditor" class="secondary wide">Create Level</button>
   </div>
   <div id="editorPanel" class="hidden"></div>
   <script>
@@ -179,8 +345,13 @@
       const ctx = canvas.getContext('2d');
       const info = document.getElementById('info');
       const startMenu = document.getElementById('startMenu');
-      const menuPlayBtn = document.getElementById('menuPlay');
+      const menuGenerateBtn = document.getElementById('menuGenerate');
+      const menuSelectBtn = document.getElementById('menuSelect');
       const menuEditorBtn = document.getElementById('menuEditor');
+      const playerNameInput = document.getElementById('playerName');
+      const nameError = document.getElementById('nameError');
+      const levelList = document.getElementById('levelList');
+      const menuStatus = document.getElementById('menuStatus');
       const editorPanel = document.getElementById('editorPanel');
       let width = canvas.width;
       let height = canvas.height;
@@ -200,9 +371,11 @@
       const MIN_VIEW_HEIGHT = 400;
 
       // --- Procedural terrain (peaks, valleys, and a flat pad segment) ---
-      const levels = [
+      const proceduralSeeds = [
         {
+          id: 'crater-run',
           name: 'Crater Run',
+          type: 'procedural',
           worldWidth: 2000,
           baseBand: [0.65, 0.9],
           amp: 0.22,
@@ -231,7 +404,9 @@
           ],
         },
         {
+          id: 'basalt-dunes',
           name: 'Basalt Dunes',
+          type: 'procedural',
           worldWidth: 2400,
           baseBand: [0.60, 0.88],
           amp: 0.26,
@@ -242,7 +417,9 @@
           padOffset: 0.66,
         },
         {
+          id: 'ridge-maze',
           name: 'Ridge Maze',
+          type: 'procedural',
           worldWidth: 2600,
           baseBand: [0.58, 0.9],
           amp: 0.28,
@@ -254,10 +431,516 @@
         },
       ];
 
-      let currentLevelIndex = 0;
-      let nextLevelIndex = 0;
+      let currentProceduralIndex = 0;
+      let nextProceduralIndex = 0;
+      let activeLevelDescriptor = null;
+      let activeLevelId = null;
+      let activeLevelSource = 'procedural';
+      let activeLevelMeta = null;
+      let levelCatalog = [];
+      const loadedLevels = new Map();
+      let bestTimes = {};
+      const STORAGE_KEYS = {
+        customLevels: 'moonlander.customLevels.v1',
+        bestTimes: 'moonlander.bestTimes.v1',
+        playerName: 'moonlander.playerName',
+      };
+      let builtinLevelCatalog = [];
+      let customLevelCatalog = [];
+      const customLevels = new Map();
+      let currentPlayerName = '';
+      let levelTimerActive = false;
+      let levelElapsedMs = 0;
+      let finalElapsedMs = null;
 
       const GRID_CELL_SIZE = 8;
+      const MAX_NAME_LENGTH = 32;
+
+      function createProceduralRun(templateIndex) {
+        const count = proceduralSeeds.length;
+        const index = Number.isInteger(templateIndex)
+          ? ((templateIndex % count) + count) % count
+          : Math.floor(Math.random() * count);
+        const template = proceduralSeeds[index] || proceduralSeeds[0];
+        const seed = Math.floor(Math.random() * 1e9);
+        const descriptor = cloneLevelDescriptor(template) || {};
+        descriptor.id = descriptor.id ? `${descriptor.id}-${seed.toString(36)}` : `proc-${seed.toString(36)}`;
+        descriptor.name = `${template.name} ${seed.toString(36).slice(-3).toUpperCase()}`;
+        descriptor.seed = seed;
+        descriptor.type = 'procedural';
+        descriptor.templateIndex = index;
+        descriptor.meteors = cloneMeteors(template.meteors || []);
+        descriptor.blackHoles = cloneBlackHoles(template.blackHoles || []);
+        return descriptor;
+      }
+
+      function createSeededRandom(seed) {
+        let state = (seed >>> 0) || 1;
+        return () => {
+          state += 0x6d2b79f5;
+          let t = state;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+
+      function formatTime(ms) {
+        if (ms == null || Number.isNaN(ms)) return '--:--.--';
+        const totalMs = Math.max(0, Math.round(ms));
+        const minutes = Math.floor(totalMs / 60000);
+        const seconds = Math.floor((totalMs % 60000) / 1000);
+        const centiseconds = Math.floor((totalMs % 1000) / 10);
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
+      }
+
+      function sanitizeName(name) {
+        if (!name) return '';
+        return name
+          .replace(/\s+/g, ' ')
+          .replace(/[^\w\s'-]/g, '')
+          .trim()
+          .slice(0, MAX_NAME_LENGTH);
+      }
+
+      function escapeHtml(value) {
+        return (value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function cloneLevelDescriptor(descriptor) {
+        if (!descriptor) return null;
+        try {
+          return JSON.parse(JSON.stringify(descriptor));
+        } catch (err) {
+          console.warn('Failed to clone level descriptor', err);
+          return Object.assign({}, descriptor);
+        }
+      }
+
+      function setActiveLevel(descriptor, { source, meta } = {}) {
+        const copy = cloneLevelDescriptor(descriptor);
+        activeLevelDescriptor = copy;
+        activeLevelId = copy?.id ?? null;
+        activeLevelSource = source || copy?.type || 'procedural';
+        activeLevelMeta = meta || null;
+        if (activeLevelSource === 'procedural' && typeof copy?.templateIndex === 'number') {
+          currentProceduralIndex = copy.templateIndex % proceduralSeeds.length;
+          if (currentProceduralIndex < 0) currentProceduralIndex += proceduralSeeds.length;
+          nextProceduralIndex = (currentProceduralIndex + 1) % proceduralSeeds.length;
+        }
+        shouldRegen = true;
+      }
+
+      function readLocalJSON(key, fallback) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return fallback;
+          const parsed = JSON.parse(raw);
+          return parsed == null ? fallback : parsed;
+        } catch (err) {
+          console.warn('Unable to read local storage data', key, err);
+          return fallback;
+        }
+      }
+
+      function writeLocalJSON(key, value) {
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch (err) {
+          console.warn('Unable to persist local storage data', key, err);
+        }
+      }
+
+      function getLevelTimes(levelId) {
+        if (!levelId) return null;
+        return bestTimes[levelId] || null;
+      }
+
+      function getPlayerBestTime(levelId, playerName) {
+        if (!levelId || !playerName) return null;
+        const times = getLevelTimes(levelId);
+        return times ? times[playerName] ?? null : null;
+      }
+
+      function getGlobalBestTime(levelId) {
+        const times = getLevelTimes(levelId);
+        if (!times) return null;
+        let bestName = null;
+        let bestValue = null;
+        for (const [name, value] of Object.entries(times)) {
+          if (typeof value !== 'number') continue;
+          if (bestValue === null || value < bestValue) {
+            bestValue = value;
+            bestName = name;
+          }
+        }
+        return bestValue == null ? null : { name: bestName, timeMs: bestValue };
+      }
+
+      function updateBestTimesCache(levelId, playerName, timeMs) {
+        if (!levelId || !playerName || typeof timeMs !== 'number') return;
+        if (!bestTimes[levelId]) bestTimes[levelId] = {};
+        const existing = bestTimes[levelId][playerName];
+        if (existing == null || timeMs < existing) {
+          bestTimes[levelId][playerName] = timeMs;
+        }
+      }
+
+      function persistBestTimesToStorage() {
+        writeLocalJSON(STORAGE_KEYS.bestTimes, bestTimes);
+      }
+
+      function setPlayerName(name) {
+        const sanitized = sanitizeName(name);
+        currentPlayerName = sanitized;
+        if (playerNameInput && playerNameInput.value !== sanitized) {
+          playerNameInput.value = sanitized;
+        }
+        if (sanitized) {
+          writeLocalJSON(STORAGE_KEYS.playerName, sanitized);
+        }
+        return sanitized;
+      }
+
+      function ensurePlayerNameEntered() {
+        const sanitized = sanitizeName(playerNameInput?.value ?? currentPlayerName);
+        if (!sanitized) {
+          nameError?.classList.remove('hidden');
+          playerNameInput?.focus({ preventScroll: true });
+          return null;
+        }
+        nameError?.classList.add('hidden');
+        return setPlayerName(sanitized);
+      }
+
+      function setMenuStatus(message, { error = false } = {}) {
+        if (!menuStatus) return;
+        if (!message) {
+          menuStatus.textContent = '';
+          menuStatus.classList.add('hidden');
+          menuStatus.classList.remove('error');
+          return;
+        }
+        menuStatus.textContent = message;
+        menuStatus.classList.remove('hidden');
+        menuStatus.classList.toggle('error', !!error);
+      }
+
+      function slugify(value) {
+        return value
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .replace(/-{2,}/g, '-');
+      }
+
+      function ensureUniqueLevelId(baseId) {
+        const base = baseId || 'level';
+        let id = base;
+        let suffix = 1;
+        const existingIds = new Set([
+          ...builtinLevelCatalog.map((entry) => entry.id),
+          ...customLevelCatalog.map((entry) => entry.id),
+        ]);
+        while (existingIds.has(id)) {
+          id = `${base}-${suffix++}`;
+        }
+        return id;
+      }
+
+      function loadCustomLevelsFromStorage() {
+        customLevels.clear();
+        customLevelCatalog = [];
+        const stored = readLocalJSON(STORAGE_KEYS.customLevels, null);
+        if (!stored || !Array.isArray(stored.levels)) {
+          return;
+        }
+        stored.levels.forEach((entry) => {
+          if (!entry || typeof entry !== 'object') return;
+          const meta = entry.meta;
+          const descriptor = entry.descriptor;
+          if (!meta || !meta.id || !descriptor) return;
+          const normalizedMeta = {
+            id: meta.id,
+            name: meta.name || descriptor.name || meta.id,
+            description: meta.description || descriptor.description || '',
+            createdBy: meta.createdBy || descriptor.createdBy || 'Unknown',
+            updatedAt: meta.updatedAt || descriptor.updatedAt || null,
+            source: 'local',
+          };
+          customLevels.set(meta.id, { meta: normalizedMeta, descriptor });
+          customLevelCatalog.push(normalizedMeta);
+        });
+      }
+
+      function persistCustomLevelsToStorage() {
+        const payload = {
+          version: 1,
+          levels: Array.from(customLevels.values()).map((entry) => ({
+            meta: entry.meta,
+            descriptor: entry.descriptor,
+          })),
+        };
+        writeLocalJSON(STORAGE_KEYS.customLevels, payload);
+      }
+
+      async function loadBundledJSON(path) {
+        const response = await fetch(path, { cache: 'no-store' });
+        if (!response.ok) {
+          const text = await response.text().catch(() => response.statusText);
+          throw new Error(`Failed to load ${path}: ${response.status} ${text}`);
+        }
+        return response.json();
+      }
+
+      async function refreshLevelCatalog() {
+        let bundled = [];
+        try {
+          const data = await loadBundledJSON('data/levels/index.json');
+          bundled = Array.isArray(data)
+            ? data.map((entry) => ({
+              id: entry.id,
+              name: entry.name,
+              description: entry.description || '',
+              createdBy: entry.createdBy || 'Unknown',
+              updatedAt: entry.updatedAt || null,
+              source: 'bundled',
+            }))
+            : [];
+        } catch (err) {
+          console.warn('Failed to load bundled level catalog', err);
+        }
+        builtinLevelCatalog = bundled;
+        loadCustomLevelsFromStorage();
+        levelCatalog = [...bundled, ...customLevelCatalog];
+        renderLevelList();
+      }
+
+      async function refreshBestTimes() {
+        let defaults = {};
+        try {
+          const data = await loadBundledJSON('data/best-times.json');
+          if (data && typeof data === 'object') {
+            defaults = data;
+          }
+        } catch (err) {
+          console.warn('Failed to load bundled best times', err);
+        }
+        const stored = readLocalJSON(STORAGE_KEYS.bestTimes, {});
+        const merged = { ...defaults };
+        Object.entries(stored || {}).forEach(([levelId, times]) => {
+          if (!merged[levelId]) {
+            merged[levelId] = {};
+          }
+          const bucket = merged[levelId];
+          if (times && typeof times === 'object') {
+            Object.entries(times).forEach(([name, value]) => {
+              if (typeof value === 'number') {
+                if (bucket[name] == null || value < bucket[name]) {
+                  bucket[name] = value;
+                }
+              }
+            });
+          }
+        });
+        bestTimes = merged;
+      }
+
+      async function loadLevelDescriptor(id) {
+        if (!id) throw new Error('Missing level id');
+        if (loadedLevels.has(id)) {
+          return cloneLevelDescriptor(loadedLevels.get(id));
+        }
+        if (customLevels.has(id)) {
+          const entry = customLevels.get(id);
+          const descriptor = cloneLevelDescriptor(entry.descriptor);
+          loadedLevels.set(id, descriptor);
+          return descriptor;
+        }
+        const descriptor = await loadBundledJSON(`data/levels/${id}.json`);
+        loadedLevels.set(id, descriptor);
+        return descriptor;
+      }
+
+      function submitBestTime(levelId, playerName, timeMs) {
+        updateBestTimesCache(levelId, playerName, timeMs);
+        persistBestTimesToStorage();
+      }
+
+      function persistLevel(descriptor) {
+        const nowIso = new Date().toISOString();
+        const name = descriptor.name?.trim() || 'Untitled Level';
+        const description = descriptor.description || '';
+        const author = descriptor.createdBy || currentPlayerName || 'Unknown';
+        let id = descriptor.id && !descriptor.id.startsWith('proc-') ? descriptor.id : null;
+        if (id) {
+          id = slugify(id);
+        }
+        if (!id) {
+          const base = slugify(name) || 'custom-level';
+          id = ensureUniqueLevelId(base);
+        } else {
+          id = ensureUniqueLevelId(id);
+        }
+        const storedDescriptor = {
+          ...descriptor,
+          id,
+          name,
+          description,
+          createdBy: author,
+          updatedAt: nowIso,
+        };
+        const meta = {
+          id,
+          name,
+          description,
+          createdBy: author,
+          updatedAt: nowIso,
+          source: 'local',
+        };
+        customLevels.set(id, { meta, descriptor: storedDescriptor });
+        loadedLevels.set(id, cloneLevelDescriptor(storedDescriptor));
+        customLevelCatalog = customLevelCatalog.filter((entry) => entry.id !== id);
+        customLevelCatalog.push(meta);
+        customLevelCatalog.sort((a, b) => {
+          const aTime = a.updatedAt || '';
+          const bTime = b.updatedAt || '';
+          return aTime === bTime ? a.name.localeCompare(b.name) : (aTime < bTime ? 1 : -1);
+        });
+        levelCatalog = [...builtinLevelCatalog, ...customLevelCatalog];
+        persistCustomLevelsToStorage();
+        activeLevelId = id;
+        activeLevelDescriptor = storedDescriptor;
+        activeLevelSource = storedDescriptor.type || (Array.isArray(storedDescriptor.terrain) ? 'grid' : 'procedural');
+        activeLevelMeta = meta;
+        renderLevelList();
+        const blob = new Blob([`${JSON.stringify(storedDescriptor, null, 2)}\n`], { type: 'application/json' });
+        const downloadUrl = URL.createObjectURL(blob);
+        return { meta, level: storedDescriptor, downloadUrl };
+      }
+
+      function renderLevelList() {
+        if (!levelList) return;
+        if (!levelCatalog.length) {
+          levelList.innerHTML = '<div class="level-entry"><p>No saved levels found yet. Use the editor to store one or run a local web server to access bundled examples.</p></div>';
+          return;
+        }
+        const currentName = sanitizeName(playerNameInput?.value ?? currentPlayerName);
+        const entries = levelCatalog.map((meta) => {
+          const updatedAtRaw = meta?.updatedAt ? new Date(meta.updatedAt).toLocaleString() : 'Unknown';
+          const updatedAt = escapeHtml(updatedAtRaw);
+          const createdBy = escapeHtml(meta?.createdBy || 'Unknown');
+          const originLabel = escapeHtml(meta?.source === 'local' ? 'Stored locally' : 'Bundled level');
+          const idAttr = escapeHtml(meta?.id || '');
+          const nameLabel = escapeHtml(meta?.name || 'Untitled Level');
+          const playerBest = currentName ? getPlayerBestTime(meta.id, currentName) : null;
+          const globalBest = getGlobalBestTime(meta.id);
+          const bestLines = [];
+          if (playerBest != null) {
+            bestLines.push(`Your best: ${formatTime(playerBest)}`);
+          }
+          if (globalBest) {
+            const label = globalBest.name === currentName ? 'You' : globalBest.name;
+            bestLines.push(`Fastest: ${formatTime(globalBest.timeMs)} (${label})`);
+          }
+          const bestHtml = bestLines.length ? `<p class="level-meta">${bestLines.join(' &bull; ')}</p>` : '';
+          const description = meta?.description ? `<p>${escapeHtml(meta.description)}</p>` : '';
+          return `
+            <div class="level-entry">
+              <h3>${nameLabel}</h3>
+              <p class="level-meta">By ${createdBy} &middot; ${originLabel} &middot; Updated ${updatedAt}</p>
+              ${description}
+              ${bestHtml}
+              <button type="button" data-level-id="${idAttr}">Play</button>
+            </div>
+          `;
+        }).join('');
+        levelList.innerHTML = entries;
+        levelList.querySelectorAll('[data-level-id]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-level-id');
+            if (id) handleLevelSelection(id);
+          });
+        });
+      }
+
+      function showLevelList() {
+        levelList?.classList.remove('hidden');
+      }
+
+      function hideLevelList() {
+        levelList?.classList.add('hidden');
+      }
+
+      async function handleLevelSelection(id) {
+        const playerName = ensurePlayerNameEntered();
+        if (!playerName) return;
+        setMenuStatus('Loading level...', { error: false });
+        try {
+          const descriptor = await loadLevelDescriptor(id);
+          const meta = levelCatalog.find((entry) => entry.id === id) || null;
+          const source = descriptor?.type || (Array.isArray(descriptor?.terrain) ? 'grid' : 'procedural');
+          setPlayerName(playerName);
+          enterPlay(descriptor, { source, meta });
+          hideLevelList();
+          setMenuStatus('');
+        } catch (err) {
+          console.error('Failed to load level', err);
+          setMenuStatus('Failed to load level. Please try again.', { error: true });
+        }
+      }
+
+      function startProceduralRun(templateIndex) {
+        const descriptor = createProceduralRun(templateIndex);
+        enterPlay(descriptor, { source: 'procedural' });
+      }
+
+      function handleGenerateLevel() {
+        const playerName = ensurePlayerNameEntered();
+        if (!playerName) return;
+        setPlayerName(playerName);
+        hideLevelList();
+        setMenuStatus('');
+        startProceduralRun();
+      }
+
+      function serializeCurrentLevelForSave(name, author, description) {
+        const cellSize = terrain.cellSize;
+        const rows = terrain.rows;
+        const cols = terrain.cols;
+        const terrainRows = [];
+        for (let r = 0; r < rows; r++) {
+          let rowStr = '';
+          for (let c = 0; c < cols; c++) {
+            const solid = terrain.solids[r * cols + c] === 1;
+            rowStr += solid ? '#' : '.';
+          }
+          terrainRows.push(rowStr);
+        }
+        return {
+          id: activeLevelId && !activeLevelId.startsWith('proc-') ? activeLevelId : undefined,
+          name,
+          description,
+          createdBy: author || currentPlayerName || 'Unknown',
+          type: 'grid',
+          world: {
+            cellSize,
+            width: terrain.width,
+            height: terrain.height,
+          },
+          spawn: { x: editorState.spawn.x, y: editorState.spawn.y },
+          pad: { x: pad.x, y: pad.y, w: pad.w, h: pad.h },
+          terrain: terrainRows,
+          blackHoles: cloneBlackHoles(terrain.blackHoles),
+          meteors: cloneMeteors(terrain.meteors),
+        };
+      }
       let terrain = {
         cellSize: GRID_CELL_SIZE,
         cols: 0,
@@ -265,7 +948,7 @@
         solids: new Uint8Array(0),
         width: width,
         height: height,
-        levelName: levels[0].name,
+        levelName: proceduralSeeds[0]?.name || 'Procedural Run',
         dirtyRender: true,
         blackHoles: [],
         meteors: [],
@@ -429,53 +1112,94 @@
         }
       }
 
-      function generateTerrain(index = currentLevelIndex) {
-        currentLevelIndex = index;
-        nextLevelIndex = currentLevelIndex;
-        const level = levels[currentLevelIndex];
-        terrain.levelName = level.name;
-        initTerrainGrid(level.worldWidth);
-        terrain.blackHoles = [];
-        terrain.meteors = cloneMeteors(level.meteors);
-
-        const step = terrain.cellSize;
-        const cols = terrain.cols;
-        const heights = new Array(cols).fill(height);
-
-        const baseMin = height * level.baseBand[0];
-        const baseMax = height * level.baseBand[1];
-        const baseMid = (baseMin + baseMax) * 0.5;
-        const amp = height * level.amp;
-
-        let y = baseMid;
-        for (let i = 0; i < cols; i++) {
-          const t = i * step;
-          const primaryWave = Math.sin(t * level.waveFreq) * amp * level.waveScale;
-          const secondaryWave = Math.sin((t + 500) * level.roughWaveFreq) * amp * 0.35;
-          const target = baseMid + primaryWave + secondaryWave;
-          const noise = (Math.random() - 0.5) * amp * level.noiseScale;
-          y = y * 0.55 + (target + noise) * 0.45;
-          y = Math.max(baseMin, Math.min(baseMax, y));
-          heights[i] = y | 0;
+      function getLevelSpawn(level) {
+        if (level && typeof level.spawn?.x === 'number' && typeof level.spawn?.y === 'number') {
+          return { x: level.spawn.x, y: level.spawn.y };
         }
+        const worldWidth = Math.max(terrain.width || 0, level?.worldWidth ?? level?.world?.width ?? width);
+        const startBuffer = 140;
+        const spawnX = Math.min(worldWidth * 0.08, Math.max(0, worldWidth - startBuffer));
+        const below = findSurfaceBelow(spawnX, 0);
+        const spawnY = below ? Math.max(40, below.y - 160) : 50;
+        return { x: spawnX, y: spawnY };
+      }
 
-        // create a flat segment for landing pad away from the start
-        const padW = 110; // keep in sync with pad.w
-        const padCols = Math.max(4, Math.round(padW / step));
-        const padStartPx = Math.floor(level.worldWidth * level.padOffset - padW / 2);
-        const padStartIdx = Math.max(0, Math.min(cols - padCols - 1, Math.floor(padStartPx / step)));
-        let padY = heights[padStartIdx];
-        for (let i = 1; i < padCols; i++) padY = Math.min(padY, heights[padStartIdx + i]);
-        for (let i = 0; i < padCols; i++) heights[padStartIdx + i] = padY;
+      function generateTerrain(descriptor = activeLevelDescriptor || proceduralSeeds[currentProceduralIndex]) {
+        const level = descriptor || proceduralSeeds[0];
+        if (!level) return;
+        terrain.levelName = level.name || 'Custom Level';
+        const type = level.type || (Array.isArray(level.terrain) ? 'grid' : 'procedural');
+        const cellSize = Math.max(1, level.world?.cellSize ?? GRID_CELL_SIZE);
+        terrain.cellSize = cellSize;
 
-        for (let col = 0; col < cols; col++) {
-          const fillStart = Math.floor(heights[col] / step);
-          fillColumnSolid(col, fillStart);
+        if (type === 'grid' && Array.isArray(level.terrain) && level.terrain.length) {
+          const rows = level.terrain.length;
+          const cols = level.terrain.reduce((max, row) => Math.max(max, row.length), 0);
+          terrain.cols = cols;
+          terrain.rows = rows;
+          terrain.width = Math.max(cols * cellSize, width);
+          terrain.height = Math.max(rows * cellSize, height);
+          terrain.solids = new Uint8Array(cols * rows);
+          for (let r = 0; r < rows; r++) {
+            const line = level.terrain[r] || '';
+            for (let c = 0; c < cols; c++) {
+              const char = line[c] === '#' ? 1 : 0;
+              terrain.solids[r * cols + c] = char;
+            }
+          }
+          terrain.blackHoles = cloneBlackHoles(level.blackHoles || []);
+          terrain.meteors = cloneMeteors(level.meteors || []);
+          const padData = level.pad || {};
+          pad.w = padData.w ?? pad.w;
+          pad.h = padData.h ?? pad.h;
+          pad.x = padData.x ?? Math.max(0, (terrain.width - pad.w) * 0.5);
+          pad.y = padData.y ?? Math.max(0, terrain.height - pad.h * 2);
+        } else {
+          const worldWidth = Math.max(400, level.worldWidth ?? level.world?.width ?? width * 3);
+          initTerrainGrid(worldWidth);
+          terrain.blackHoles = cloneBlackHoles(level.blackHoles || []);
+          terrain.meteors = cloneMeteors(level.meteors || []);
+          const step = terrain.cellSize;
+          const cols = terrain.cols;
+          const heights = new Array(cols).fill(height);
+          const baseBand = level.baseBand || [0.65, 0.9];
+          const baseMin = height * baseBand[0];
+          const baseMax = height * baseBand[1];
+          const baseMid = (baseMin + baseMax) * 0.5;
+          const amp = height * (level.amp ?? 0.22);
+          const rng = typeof level.seed === 'number' ? createSeededRandom(level.seed) : Math.random;
+          let y = baseMid;
+          const waveScale = level.waveScale ?? 0.65;
+          const waveFreq = level.waveFreq ?? 0.012;
+          const roughWaveFreq = level.roughWaveFreq ?? 0.037;
+          const noiseScale = level.noiseScale ?? 0.12;
+          for (let i = 0; i < cols; i++) {
+            const t = i * step;
+            const primaryWave = Math.sin(t * waveFreq) * amp * waveScale;
+            const secondaryWave = Math.sin((t + 500) * roughWaveFreq) * amp * 0.35;
+            const target = baseMid + primaryWave + secondaryWave;
+            const noise = (rng() - 0.5) * amp * noiseScale;
+            y = y * 0.55 + (target + noise) * 0.45;
+            y = Math.max(baseMin, Math.min(baseMax, y));
+            heights[i] = y | 0;
+          }
+          const padW = level.pad?.w ?? 110;
+          const padCols = Math.max(4, Math.round(padW / step));
+          const padOffset = level.padOffset ?? 0.75;
+          const padStartPx = Math.floor(worldWidth * padOffset - padW / 2);
+          const padStartIdx = Math.max(0, Math.min(cols - padCols - 1, Math.floor(padStartPx / step)));
+          let padY = heights[padStartIdx];
+          for (let i = 1; i < padCols; i++) padY = Math.min(padY, heights[padStartIdx + i]);
+          for (let i = 0; i < padCols; i++) heights[padStartIdx + i] = padY;
+          for (let col = 0; col < cols; col++) {
+            const fillStart = Math.floor(heights[col] / step);
+            fillColumnSolid(col, fillStart);
+          }
+          pad.w = padW;
+          pad.h = level.pad?.h ?? pad.h;
+          pad.x = padStartIdx * step;
+          pad.y = padY - pad.h;
         }
-
-        pad.w = padW;
-        pad.x = padStartIdx * step;
-        pad.y = padY - pad.h;
         alignPadToSurface(pad.x + pad.w / 2, pad.y);
         terrain.dirtyRender = true;
       }
@@ -1106,6 +1830,27 @@
         editorPanel.innerHTML = html;
       }
 
+      function buildEditorSaveControls() {
+        const defaultName = activeLevelDescriptor?.name || 'Untitled Level';
+        const defaultAuthor = currentPlayerName || activeLevelMeta?.createdBy || '';
+        const defaultDescription = activeLevelDescriptor?.description || '';
+        return `
+          <div class="editor-save">
+            <button type="button" data-editor-save-toggle>Save Level</button>
+            <div class="editor-save-form hidden" data-editor-save-form>
+              <label>Level name<input type="text" maxlength="80" data-editor-save-name value="${escapeHtml(defaultName)}"></label>
+              <label>Author<input type="text" maxlength="80" data-editor-save-author value="${escapeHtml(defaultAuthor)}"></label>
+              <label>Description<textarea rows="3" data-editor-save-description>${escapeHtml(defaultDescription)}</textarea></label>
+              <div class="editor-save-actions">
+                <button type="button" class="secondary" data-editor-save-cancel>Cancel</button>
+                <button type="button" data-editor-save-submit>Store Level</button>
+              </div>
+              <div class="editor-save-status" data-editor-save-status></div>
+            </div>
+          </div>
+        `;
+      }
+
       function buildMeteorEditorControls() {
         const meteors = ensureEditorMeteors();
         const selectedIndex = editorState.selectedMeteor;
@@ -1171,6 +1916,90 @@
         inputs.forEach((input) => {
           input.addEventListener('change', handleMeteorInputEvent);
           input.addEventListener('blur', handleMeteorInputEvent);
+        });
+      }
+
+      function attachEditorSaveEvents() {
+        const toggleBtn = editorPanel.querySelector('[data-editor-save-toggle]');
+        const form = editorPanel.querySelector('[data-editor-save-form]');
+        const nameInput = editorPanel.querySelector('[data-editor-save-name]');
+        const authorInput = editorPanel.querySelector('[data-editor-save-author]');
+        const descriptionInput = editorPanel.querySelector('[data-editor-save-description]');
+        const cancelBtn = editorPanel.querySelector('[data-editor-save-cancel]');
+        const submitBtn = editorPanel.querySelector('[data-editor-save-submit]');
+        const statusEl = editorPanel.querySelector('[data-editor-save-status]');
+        if (!toggleBtn || !form || !submitBtn || !nameInput) return;
+        const setStatus = (text, isError = false) => {
+          if (!statusEl) return;
+          statusEl.textContent = text;
+          statusEl.classList.toggle('error', !!isError);
+        };
+        let saving = false;
+        let lastDownloadUrl = null;
+        toggleBtn.addEventListener('click', () => {
+          form.classList.toggle('hidden');
+          setStatus('');
+          if (!form.classList.contains('hidden')) {
+            nameInput.focus({ preventScroll: true });
+          }
+        });
+        cancelBtn?.addEventListener('click', () => {
+          form.classList.add('hidden');
+          setStatus('');
+        });
+        submitBtn.addEventListener('click', () => {
+          if (saving) return;
+          const name = sanitizeName(nameInput.value);
+          if (!name) {
+            setStatus('Please provide a level name.', true);
+            nameInput.focus({ preventScroll: true });
+            return;
+          }
+          const author = sanitizeName(authorInput?.value ?? currentPlayerName);
+          const description = (descriptionInput?.value ?? '').trim();
+          saving = true;
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Saving...';
+          setStatus('Saving level...', false);
+          try {
+            const payload = serializeCurrentLevelForSave(name, author, description);
+            const result = persistLevel(payload);
+            const savedName = result?.meta?.name || name;
+            if (lastDownloadUrl) {
+              URL.revokeObjectURL(lastDownloadUrl);
+              lastDownloadUrl = null;
+            }
+            if (result?.downloadUrl) {
+              lastDownloadUrl = result.downloadUrl;
+            }
+            if (statusEl) {
+              statusEl.classList.remove('error');
+              statusEl.textContent = '';
+              statusEl.innerHTML = '';
+              const messageSpan = document.createElement('span');
+              messageSpan.textContent = `Saved as "${savedName}".`;
+              statusEl.appendChild(messageSpan);
+              if (lastDownloadUrl) {
+                statusEl.appendChild(document.createTextNode(' '));
+                const link = document.createElement('a');
+                link.href = lastDownloadUrl;
+                const fileName = `${result?.meta?.id || 'level'}.json`;
+                link.download = fileName;
+                link.textContent = 'Download JSON';
+                statusEl.appendChild(link);
+              }
+            } else {
+              setStatus(`Saved as "${savedName}".`, false);
+            }
+            form.classList.add('hidden');
+          } catch (err) {
+            console.error('Failed to save level', err);
+            setStatus('Failed to save level. Storage unavailable.', true);
+          } finally {
+            saving = false;
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Store Level';
+          }
         });
       }
 
@@ -1763,21 +2592,26 @@ let camY = null;
           lines.splice(3, 0, clickInstruction);
           lines.push('R: test this level');
           lines.push('Esc: back to menu');
+          let panelHtml = buildEditorSaveControls();
           if (option === 'meteor') {
-            const panelHtml = buildMeteorEditorControls();
-            updateEditorPanel(lines, panelHtml);
+            panelHtml += buildMeteorEditorControls();
+          }
+          updateEditorPanel(lines, panelHtml);
+          attachEditorSaveEvents();
+          if (option === 'meteor') {
             attachMeteorEditorEvents();
-          } else {
-            updateEditorPanel(lines);
           }
         } else if (appMode === APP_MODE.TEST) {
           editorPanel.classList.remove('hidden');
-          updateEditorPanel([
+          const lines = [
             '<strong>Test Flight</strong>',
             'Arrow keys: fly the lander',
             'R: restart test',
             'Esc: return to editor',
-          ]);
+          ];
+          const panelHtml = buildEditorSaveControls();
+          updateEditorPanel(lines, panelHtml);
+          attachEditorSaveEvents();
         } else {
           editorPanel.classList.add('hidden');
           updateEditorPanel([]);
@@ -1788,6 +2622,9 @@ let camY = null;
         appMode = APP_MODE.MENU;
         editorState.active = false;
         startMenu.classList.remove('hidden');
+        hideLevelList();
+        setMenuStatus('');
+        levelTimerActive = false;
         updateEditorOverlay();
         info.textContent = '';
         audio.setThrusterActive(false);
@@ -1797,11 +2634,12 @@ let camY = null;
         }
       }
 
-      function enterPlay() {
+      function enterPlay(levelDescriptor, options = {}) {
+        if (!levelDescriptor) return;
         appMode = APP_MODE.PLAY;
         startMenu.classList.add('hidden');
         editorState.active = false;
-        generateTerrain(0);
+        setActiveLevel(levelDescriptor, options);
         resetGame(true);
         updateEditorOverlay();
       }
@@ -1887,15 +2725,55 @@ let camY = null;
         editorState.testBaseline = null;
       }
 
-      menuPlayBtn.addEventListener('click', () => {
+      menuGenerateBtn.addEventListener('click', () => {
         audio.unlock();
-        enterPlay();
+        handleGenerateLevel();
+      });
+
+      menuSelectBtn.addEventListener('click', async () => {
+        audio.unlock();
+        if (levelList?.classList.contains('hidden')) {
+          setMenuStatus('Loading catalog...', { error: false });
+          await refreshLevelCatalog();
+          const message = levelCatalog.length
+            ? ''
+            : 'No saved levels yet. Store one from the editor or host the repo with a local server to load bundled examples.';
+          setMenuStatus(message, { error: false });
+          showLevelList();
+        } else {
+          hideLevelList();
+          setMenuStatus('');
+        }
       });
 
       menuEditorBtn.addEventListener('click', () => {
         audio.unlock();
         enterEditor(true);
       });
+
+      if (playerNameInput) {
+        playerNameInput.addEventListener('input', () => {
+          if (playerNameInput.value.trim()) {
+            nameError?.classList.add('hidden');
+            if (!levelList?.classList.contains('hidden')) {
+              renderLevelList();
+            }
+          }
+        });
+        playerNameInput.addEventListener('blur', () => {
+          const sanitized = sanitizeName(playerNameInput.value);
+          if (!sanitized) {
+            nameError?.classList.remove('hidden');
+          }
+          setPlayerName(sanitized);
+        });
+        playerNameInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            handleGenerateLevel();
+          }
+        });
+      }
 
       // Debug overlay is off by default
       let showDebug = false;
@@ -2365,15 +3243,14 @@ let camY = null;
         } = overrides;
         const usingCustomTerrain = !!customTerrain;
         if ((forceTerrain || shouldRegen) && !usingCustomTerrain) {
-          const regenIndex = shouldRegen ? nextLevelIndex : currentLevelIndex;
-          generateTerrain(regenIndex);
+          generateTerrain(activeLevelDescriptor);
           shouldRegen = false;
         }
         if (!usingCustomTerrain) {
-          const level = levels[currentLevelIndex];
-          const startBuffer = 140;
-          lander.x = Math.min(level.worldWidth * 0.08, level.worldWidth - startBuffer);
-          lander.y = 50;
+          const level = activeLevelDescriptor;
+          const spawnPoint = getLevelSpawn(level);
+          lander.x = spawnPoint.x;
+          lander.y = spawnPoint.y;
         } else if (spawn) {
           lander.x = spawn.x;
           lander.y = spawn.y;
@@ -2414,12 +3291,23 @@ let camY = null;
         for (const key of Object.keys(keys)) {
           if (keys[key]) keys[key] = false;
         }
+        if (appMode === APP_MODE.PLAY && !usingCustomTerrain) {
+          levelElapsedMs = 0;
+          finalElapsedMs = null;
+          levelTimerActive = true;
+        } else if (appMode !== APP_MODE.PLAY) {
+          levelTimerActive = false;
+        }
       }
 
       function spawnExplosion(x, y, baseVx, baseVy) {
         if (exploded) return;
         exploded = true;
         gameOver = true;
+        if (appMode === APP_MODE.PLAY) {
+          levelTimerActive = false;
+          finalElapsedMs = levelElapsedMs;
+        }
         if (appMode === APP_MODE.TEST) {
           message = 'Test failed. Press R to retry or Esc to edit';
         } else {
@@ -4002,7 +4890,10 @@ let camY = null;
       function drawHUD() {
         const isGameplay = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
         if (isGameplay) {
-          info.textContent = `Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}°`;
+          const elapsedLabel = formatTime(finalElapsedMs ?? levelElapsedMs);
+          const playerBest = activeLevelId && currentPlayerName ? getPlayerBestTime(activeLevelId, currentPlayerName) : null;
+          const bestLabel = playerBest != null ? formatTime(playerBest) : '--:--.--';
+          info.textContent = `Pilot: ${currentPlayerName || '—'} | Level: ${terrain.levelName} | Fuel: ${lander.fuel.toFixed(1)} | Velocity: ${Math.sqrt(lander.vx ** 2 + lander.vy ** 2).toFixed(2)} | Angle: ${(lander.angle * 57.2958).toFixed(0)}° | Time: ${elapsedLabel} | Best: ${bestLabel}`;
           info.style.display = 'block';
         } else if (appMode === APP_MODE.EDITOR) {
           const option = editorState.placementOptions[editorState.placementIndex];
@@ -4092,6 +4983,9 @@ let camY = null;
         padPulsePhase = (padPulsePhase + (dt / PAD_PULSE_PERIOD) * Math.PI * 2) % (Math.PI * 2);
         padGlowAlpha = 0.525 + 0.325 * Math.sin(padPulsePhase);
         const gameplayMode = appMode === APP_MODE.PLAY || appMode === APP_MODE.TEST;
+        if (appMode === APP_MODE.PLAY && !gameOver && levelTimerActive) {
+          levelElapsedMs += dt;
+        }
         if (!gameplayMode) {
           audio.setThrusterActive(false);
           return;
@@ -4244,10 +5138,41 @@ let camY = null;
               shouldRegen = false;
               message = 'Test complete! Press Esc to edit or R to retry';
             } else {
-              shouldRegen = true;
-              nextLevelIndex = (currentLevelIndex + 1) % levels.length;
-              const upcoming = levels[nextLevelIndex].name;
-              message = `Nice landing! Press R to explore ${upcoming}`;
+              const completedTemplate = typeof activeLevelDescriptor?.templateIndex === 'number'
+                ? activeLevelDescriptor.templateIndex
+                : null;
+              const runTime = levelElapsedMs;
+              finalElapsedMs = runTime;
+              levelTimerActive = false;
+              const prevBest = activeLevelId && currentPlayerName
+                ? getPlayerBestTime(activeLevelId, currentPlayerName)
+                : null;
+              if (activeLevelId && currentPlayerName) {
+                updateBestTimesCache(activeLevelId, currentPlayerName, runTime);
+                if (activeLevelSource !== 'procedural' || (activeLevelId && !activeLevelId.startsWith('proc-'))) {
+                  submitBestTime(activeLevelId, currentPlayerName, runTime);
+                }
+              }
+              const isNewBest = prevBest == null || runTime < prevBest - 0.5;
+              const timeLabel = formatTime(runTime);
+              const parts = [`Nice landing${currentPlayerName ? `, ${currentPlayerName}` : ''}! Time: ${timeLabel}.`];
+              if (isNewBest && currentPlayerName && activeLevelId) {
+                parts.push('New personal best!');
+              } else if (prevBest != null) {
+                parts.push(`Best: ${formatTime(prevBest)}.`);
+              }
+              const replayHint = activeLevelSource === 'procedural'
+                ? 'Press R to explore a new landscape.'
+                : 'Press R to fly again.';
+              message = `${parts.join(' ')} ${replayHint}`.trim();
+              if (activeLevelSource === 'procedural') {
+                const nextRun = createProceduralRun(
+                  completedTemplate == null ? undefined : completedTemplate + 1
+                );
+                setActiveLevel(nextRun, { source: 'procedural' });
+              } else {
+                shouldRegen = true;
+              }
             }
             const touchdownY = touchingFeet.length
               ? touchingFeet.reduce((min, pt) => Math.min(min, pt.surfaceY ?? min), touchingFeet[0].surfaceY ?? lander.y)
@@ -4347,6 +5272,20 @@ let camY = null;
         drawDebugOverlay(k);
         requestAnimationFrame(loop);
       }
+
+      async function init() {
+        const storedName = readLocalJSON(STORAGE_KEYS.playerName, '');
+        if (storedName) {
+          setPlayerName(storedName);
+          nameError?.classList.add('hidden');
+        }
+        await refreshBestTimes();
+        await refreshLevelCatalog();
+        renderLevelList();
+        setMenuStatus('');
+      }
+
+      init().catch((err) => console.error('Initialization failed', err));
 
       window.addEventListener('resize', resizeCanvas);
       resizeCanvas();
