@@ -175,6 +175,10 @@
       font-size: 16px;
       color: #f8fbff;
     }
+    #levelList .level-entry h3,
+    #levelList .level-entry .level-description {
+      white-space: pre-wrap;
+    }
     #levelList .level-entry p {
       margin: 0;
       font-size: 13px;
@@ -514,7 +518,8 @@
       function sanitizeName(name) {
         if (!name) return '';
         return name
-          .replace(/\s+/g, ' ')
+          .replace(/\r\n|\r|\n/g, ' ')
+          .replace(/\t/g, ' ')
           .replace(/[^\w\s'-]/g, '')
           .trim()
           .slice(0, MAX_NAME_LENGTH);
@@ -877,9 +882,13 @@
             const label = globalBest.name === currentName ? 'You' : globalBest.name;
             bestLines.push(`Fastest: ${formatTime(globalBest.timeMs)} (${label})`);
           }
-          const bestHtml = bestLines.length ? `<p class="level-meta">${bestLines.join(' &bull; ')}</p>` : '';
-          const description = meta?.description ? `<p>${escapeHtml(meta.description)}</p>` : '';
-          return `
+            const bestHtml = bestLines.length
+              ? `<p class="level-meta">${bestLines.join(' &bull; ')}</p>`
+              : '';
+            const description = meta?.description
+              ? `<p class="level-description">${escapeHtml(meta.description)}</p>`
+              : '';
+            return `
             <div class="level-entry">
               <h3>${nameLabel}</h3>
               <p class="level-meta">By ${createdBy} &middot; ${originLabel} &middot; Updated ${updatedAt}</p>
@@ -1984,7 +1993,8 @@
             return;
           }
           const author = sanitizeName(authorInput?.value ?? currentPlayerName);
-          const description = (descriptionInput?.value ?? '').trim();
+          const descriptionRaw = descriptionInput?.value ?? '';
+          const description = descriptionRaw.replace(/\r\n?/g, '\n');
           saving = true;
           submitBtn.disabled = true;
           submitBtn.textContent = 'Saving...';
