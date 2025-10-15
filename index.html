@@ -525,6 +525,14 @@
           .slice(0, MAX_NAME_LENGTH);
       }
 
+      function isTextEntryElement(element) {
+        return (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement ||
+          (element != null && element.isContentEditable === true)
+        );
+      }
+
       function escapeHtml(value) {
         return (value ?? '')
           .replace(/&/g, '&amp;')
@@ -2827,7 +2835,15 @@ let camY = null;
       window.addEventListener('keydown', (e) => {
         audio.unlock();
         const key = e.key === 'Spacebar' ? ' ' : e.key;
-        const isEditorInput = editorPanel.contains(e.target) && e.target instanceof HTMLInputElement;
+        const target = e.target;
+        const isEditorInput = editorPanel.contains(target) && isTextEntryElement(target);
+        const isTypingField = isTextEntryElement(target);
+        const bypassHotkeys = isTypingField && key !== 'Escape';
+
+        if (bypassHotkeys) {
+          return;
+        }
+
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
         }
@@ -2969,6 +2985,11 @@ let camY = null;
       });
       window.addEventListener('keyup', (e) => {
         const key = e.key === 'Spacebar' ? ' ' : e.key;
+        const target = e.target;
+        const isTypingField = isTextEntryElement(target);
+        if (isTypingField && key !== 'Escape') {
+          return;
+        }
         if (key === ' ' || key === 'Space') {
           e.preventDefault();
           keys.Space = false;
