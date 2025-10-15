@@ -117,14 +117,26 @@
       color: #ffb37a;
     }
     #startMenu .menu-actions {
-      flex-direction: row;
-      align-items: center;
+      flex-direction: column;
+      align-items: stretch;
     }
     #startMenu .menu-actions button {
-      flex: 1 1 0;
+      flex: 1 1 auto;
+      width: 100%;
     }
     #startMenu button.wide {
       width: 100%;
+    }
+    #startMenu button:disabled,
+    #startMenu button.is-disabled {
+      cursor: not-allowed;
+      background: rgba(128, 140, 154, 0.55);
+      color: rgba(240, 244, 250, 0.65);
+      transform: none;
+    }
+    #startMenu button:disabled:hover,
+    #startMenu button.is-disabled:hover {
+      background: rgba(128, 140, 154, 0.55);
     }
     #levelList {
       width: 100%;
@@ -331,12 +343,12 @@
       <div id="nameError" class="menu-error hidden">Please enter your name to begin.</div>
     </div>
     <div class="menu-section menu-actions">
-      <button id="menuGenerate">Generate Level</button>
-      <button id="menuSelect" class="secondary">Select Level</button>
+      <button id="menuGenerate" class="wide">Generate Level</button>
+      <button id="menuSelect" class="secondary wide">Select Level</button>
+      <button id="menuEditor" class="secondary wide">Create Level</button>
     </div>
     <div id="levelList" class="menu-section hidden"></div>
     <div id="menuStatus" class="menu-status hidden"></div>
-    <button id="menuEditor" class="secondary wide">Create Level</button>
   </div>
   <div id="editorPanel" class="hidden"></div>
   <script>
@@ -355,6 +367,11 @@
       const editorPanel = document.getElementById('editorPanel');
       let width = canvas.width;
       let height = canvas.height;
+
+      if (menuSelectBtn) {
+        menuSelectBtn.disabled = true;
+        menuSelectBtn.classList.add('is-disabled');
+      }
 
       const APP_MODE = {
         MENU: 'menu',
@@ -825,8 +842,19 @@
         return { meta, level: storedDescriptor, downloadUrl };
       }
 
+      function updateSelectButtonState() {
+        if (!menuSelectBtn) return;
+        const hasLevels = levelCatalog.length > 0;
+        menuSelectBtn.disabled = !hasLevels;
+        menuSelectBtn.classList.toggle('is-disabled', !hasLevels);
+        if (!hasLevels) {
+          hideLevelList();
+        }
+      }
+
       function renderLevelList() {
         if (!levelList) return;
+        updateSelectButtonState();
         if (!levelCatalog.length) {
           levelList.innerHTML = '<div class="level-entry"><p>No saved levels found yet. Use the editor to store one or run a local web server to access bundled examples.</p></div>';
           return;
@@ -1005,7 +1033,7 @@
       const editorState = {
         active: false,
         grid: null,
-        placementOptions: ['spawn', 'landing', 'blackHole', 'meteor'],
+        placementOptions: ['terrain', 'spawn', 'landing', 'blackHole', 'meteor'],
         placementIndex: 0,
         spawn: { x: 180, y: 120 },
         isPainting: false,
@@ -2077,6 +2105,7 @@
 
       function labelForPlacement(key) {
         switch (key) {
+          case 'terrain': return 'Terrain brush';
           case 'spawn': return 'Spawn point';
           case 'landing': return 'Landing zone';
           case 'blackHole': return 'Black hole';
@@ -2567,12 +2596,15 @@ let camY = null;
           editorPanel.classList.remove('hidden');
           const option = editorState.placementOptions[editorState.placementIndex];
           const placementLabel = labelForPlacement(option);
+          const hotkeyHint = editorState.placementOptions.length >= 5 ? '1-5' : '1-4';
           let clickInstruction = `Click: place ${placementLabel}`;
-          const lines = [
-            '<strong>Level Editor</strong>',
-            'Left drag: add terrain (hold Alt to carve)',
-            `Mouse wheel or 1-4: select ${placementLabel}`,
-          ];
+          const lines = ['<strong>Level Editor</strong>'];
+          if (option === 'terrain') {
+            lines.push('Left drag: add terrain (hold Alt to carve)');
+          } else {
+            lines.push('Hold Alt while dragging to carve terrain when needed');
+          }
+          lines.push(`Mouse wheel or ${hotkeyHint}: select ${placementLabel}`);
           if (option === 'spawn') {
             lines.push('Drag: reposition the spawn point');
           } else if (option === 'landing') {
@@ -2588,6 +2620,8 @@ let camY = null;
             lines.push('[/ ] radius  |  -/ = speed');
             lines.push(`,/ . warning lead  |  ;/' (apostrophe) start time`);
             lines.push('Select a meteor or defaults in the panel to edit timing, warning, speed, and size.');
+          } else if (option === 'terrain') {
+            clickInstruction = 'Click: paint terrain (Alt: carve)';
           }
           lines.splice(3, 0, clickInstruction);
           lines.push('R: test this level');
@@ -2732,6 +2766,7 @@ let camY = null;
 
       menuSelectBtn.addEventListener('click', async () => {
         audio.unlock();
+        if (menuSelectBtn.disabled) return;
         if (levelList?.classList.contains('hidden')) {
           setMenuStatus('Loading catalog...', { error: false });
           await refreshLevelCatalog();
@@ -2827,7 +2862,7 @@ let camY = null;
         }
         if (appMode === APP_MODE.EDITOR) {
           if (!isEditorInput) {
-            const placementMap = { '1': 'spawn', '2': 'landing', '3': 'blackHole', '4': 'meteor' };
+            const placementMap = { '1': 'terrain', '2': 'spawn', '3': 'landing', '4': 'blackHole', '5': 'meteor' };
             if (placementMap[key]) {
               const targetIndex = editorState.placementOptions.indexOf(placementMap[key]);
               if (targetIndex !== -1) {
@@ -3034,6 +3069,10 @@ let camY = null;
             resetPainting();
             return;
           }
+          editorPlaceSpawn(world.x, world.y);
+          terrain.dirtyRender = true;
+          resetPainting();
+          return;
         } else if (option === 'landing') {
           const margin = 20;
           const padCenterX = pad.x + pad.w / 2;
@@ -3049,6 +3088,13 @@ let camY = null;
             resetPainting();
             return;
           }
+          editorPlaceLanding(world.x, world.y);
+          terrain.dirtyRender = true;
+          resetPainting();
+          return;
+        } else if (option !== 'terrain') {
+          resetPainting();
+          return;
         }
         editorState.isPainting = true;
         editorState.hasMoved = false;
@@ -3147,7 +3193,7 @@ let camY = null;
             editorState.pendingMeteor.target = { ...world };
           }
         }
-        if (!editorState.isPainting) return;
+        if (!editorState.isPainting || option !== 'terrain') return;
         const prev = editorState.lastPointer;
         if (!editorState.hasMoved) {
           const reference = editorState.pendingPaintStart || prev;
@@ -3176,13 +3222,9 @@ let camY = null;
         editorState.pendingPaintStart = null;
         editorState.lastPointer = null;
         const option = editorState.placementOptions[editorState.placementIndex];
-        if (option === 'blackHole' || option === 'meteor') return;
-        if (!moved) {
-          if (option === 'spawn') {
-            editorPlaceSpawn(world.x, world.y);
-          } else if (option === 'landing') {
-            editorPlaceLanding(world.x, world.y);
-          }
+        if (option !== 'terrain') return;
+        if (!moved && world) {
+          editorApplyBrush(world.x, world.y, editorState.activeBrushMode);
         }
       }
 
