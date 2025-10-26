@@ -44,7 +44,11 @@ export function createGameLoop({
       editorState: state.editor,
     });
     terrainProfile = heights;
-    const spawnX = state.pad.x - 120;
+    const spawnX = clamp(
+      state.pad.x - 120,
+      40,
+      Math.max(state.terrain.width - 40, 40)
+    );
     const spawnY = Math.min(...heights) - 120;
     resetLander(state.lander, spawnX, Math.max(40, spawnY));
     state.lander.vx = 0.04;
@@ -62,6 +66,7 @@ export function createGameLoop({
     touchControls.setVisible(true);
     setupLevel(state.runtime.currentLevelIndex);
     lastTime = null;
+    updateCamera(true);
     runFrame(performance.now());
   }
 
@@ -117,6 +122,7 @@ export function createGameLoop({
     }
 
     constrainLander();
+    updateCamera();
     if (!state.runtime.gameOver) {
       evaluateContacts();
     }
@@ -124,13 +130,26 @@ export function createGameLoop({
 
   function constrainLander() {
     const lander = state.lander;
-    const width = canvas.width;
-    const height = canvas.height;
+    const width = Math.max(canvas.width, state.terrain.width || 0);
+    const height = Math.max(canvas.height, state.terrain.height || 0);
     if (lander.x < 0) lander.x = 0;
     if (lander.x > width) lander.x = width;
     if (lander.y < 0) lander.y = 0;
     if (lander.y > height + 80) {
       handleCrash('You drifted into the abyss.');
+    }
+  }
+
+  function updateCamera(force = false) {
+    const worldWidth = Math.max(state.terrain.width || 0, canvas.width);
+    const viewWidth = canvas.width;
+    let camX = 0;
+    if (worldWidth > viewWidth) {
+      const target = state.lander.x - viewWidth * 0.5;
+      camX = clamp(target, 0, worldWidth - viewWidth);
+    }
+    if (force || camX !== state.runtime.camX) {
+      state.runtime.camX = camX;
     }
   }
 
@@ -161,8 +180,11 @@ export function createGameLoop({
   function drawTerrain() {
     if (terrainProfile.length === 0) return;
     ctx.save();
+    const camX = state.runtime.camX || 0;
     ctx.fillStyle = '#0f1928';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-camX, 0);
     ctx.fillStyle = '#1a2638';
     ctx.beginPath();
     ctx.moveTo(0, canvas.height);
@@ -177,12 +199,13 @@ export function createGameLoop({
     ctx.fillStyle = '#f8f4d6';
     ctx.fillRect(state.pad.x, state.pad.y, state.pad.w, state.pad.h);
     ctx.restore();
+    ctx.restore();
   }
 
   function drawLander() {
     const lander = state.lander;
     ctx.save();
-    ctx.translate(lander.x, lander.y);
+    ctx.translate(lander.x - (state.runtime.camX || 0), lander.y);
     ctx.rotate(lander.angle);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(-lander.width / 2, -lander.height / 2, lander.width, lander.height);
