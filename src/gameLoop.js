@@ -7,6 +7,34 @@ import { getLanderContactPoints, applyThrust, integrateLander, rotateLander } fr
 const LANDING_MAX_SPEED = 0.08;
 const LANDING_MAX_ANGLE = Math.PI / 8;
 
+export function computeSpawnX(padX, terrainWidth) {
+  const worldWidth = Math.max(typeof terrainWidth === 'number' ? terrainWidth : 0, 40);
+  return clamp(padX - 120, 40, Math.max(worldWidth - 40, 40));
+}
+
+export function clampLanderToWorld(lander, canvas, terrain, onAbyss = () => {}) {
+  const worldWidth = Math.max(canvas?.width ?? 0, terrain?.width ?? 0);
+  const worldHeight = Math.max(canvas?.height ?? 0, terrain?.height ?? 0);
+
+  if (lander.x < 0) lander.x = 0;
+  if (lander.x > worldWidth) lander.x = worldWidth;
+  if (lander.y < 0) lander.y = 0;
+  if (lander.y > worldHeight + 80 && typeof onAbyss === 'function') {
+    onAbyss('You drifted into the abyss.');
+  }
+
+  return { width: worldWidth, height: worldHeight };
+}
+
+export function computeCameraX(landerX, viewWidth, worldWidth) {
+  if (!Number.isFinite(viewWidth) || viewWidth <= 0) return 0;
+  if (!Number.isFinite(worldWidth) || worldWidth <= viewWidth) {
+    return 0;
+  }
+  const target = landerX - viewWidth * 0.5;
+  return clamp(target, 0, worldWidth - viewWidth);
+}
+
 export function createGameLoop({
   canvas,
   infoPanel,
@@ -44,11 +72,7 @@ export function createGameLoop({
       editorState: state.editor,
     });
     terrainProfile = heights;
-    const spawnX = clamp(
-      state.pad.x - 120,
-      40,
-      Math.max(state.terrain.width - 40, 40)
-    );
+    const spawnX = computeSpawnX(state.pad.x, state.terrain.width);
     const spawnY = Math.min(...heights) - 120;
     resetLander(state.lander, spawnX, Math.max(40, spawnY));
     state.lander.vx = 0.04;
@@ -129,25 +153,13 @@ export function createGameLoop({
   }
 
   function constrainLander() {
-    const lander = state.lander;
-    const width = Math.max(canvas.width, state.terrain.width || 0);
-    const height = Math.max(canvas.height, state.terrain.height || 0);
-    if (lander.x < 0) lander.x = 0;
-    if (lander.x > width) lander.x = width;
-    if (lander.y < 0) lander.y = 0;
-    if (lander.y > height + 80) {
-      handleCrash('You drifted into the abyss.');
-    }
+    clampLanderToWorld(state.lander, canvas, state.terrain, handleCrash);
   }
 
   function updateCamera(force = false) {
     const worldWidth = Math.max(state.terrain.width || 0, canvas.width);
     const viewWidth = canvas.width;
-    let camX = 0;
-    if (worldWidth > viewWidth) {
-      const target = state.lander.x - viewWidth * 0.5;
-      camX = clamp(target, 0, worldWidth - viewWidth);
-    }
+    const camX = computeCameraX(state.lander.x, viewWidth, worldWidth);
     if (force || camX !== state.runtime.camX) {
       state.runtime.camX = camX;
     }
