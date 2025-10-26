@@ -17,10 +17,18 @@ Open `index.html` in any modern browser—no build step required. The playfield 
 - **Start button** – return to the main menu when using touch controls
 
 ## Tests
-A minimal Node-based harness exercises the pure terrain and physics helpers.
+A minimal Node-based harness exercises the pure terrain, lander physics, and input helpers. The scripts assume Node.js 18 or newer (for native ES modules).
+
+Run the suite directly:
 
 ```bash
 node tests/runTests.js
+```
+
+Or via the convenience npm script:
+
+```bash
+npm test
 ```
 
 ## Project layout
