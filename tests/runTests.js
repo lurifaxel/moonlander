@@ -3,12 +3,16 @@ import { runTerrainTests } from './terrain.test.js';
 import { runLanderTests } from './lander.test.js';
 import { runInputTests } from './input.test.js';
 import { runCameraTests } from './camera.test.js';
+import { runParticleTests } from './particles.test.js';
+import { runHazardTests } from './hazards.test.js';
 
 const suites = [
   { name: 'Terrain helpers', fn: runTerrainTests },
   { name: 'Lander physics', fn: runLanderTests },
   { name: 'Input manager', fn: runInputTests },
   { name: 'Camera and world bounds', fn: runCameraTests },
+  { name: 'Particle effects', fn: runParticleTests },
+  { name: 'Hazard systems', fn: runHazardTests },
 ];
 
 let passed = 0;

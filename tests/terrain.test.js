@@ -5,6 +5,9 @@ import {
   resolvePenetrationAt,
   groundYAt,
   setSolidCell,
+  paintTerrainCircle,
+  deformTerrainAt,
+  terrainHeightAt,
 } from '../src/terrain.js';
 
 export async function runTerrainTests(assert) {
@@ -41,4 +44,22 @@ export async function runTerrainTests(assert) {
   setSolidCell(terrain, col, row, 0);
   const cleared = resolvePenetrationAt(terrain, col * terrain.cellSize + 1, row * terrain.cellSize + 1);
   assert.equal(cleared.depth, 0, 'setSolidCell removes solid occupancy');
+
+  const addX = pad.x + pad.w + 30;
+  const addY = pad.y + pad.h;
+  paintTerrainCircle(terrain, pad, addX, addY, 16, 'add');
+  const addHeight = terrainHeightAt(terrain, addX);
+  assert.ok(addHeight <= addY + terrain.cellSize, 'paintTerrainCircle adds material beneath cursor');
+
+  const removeX = pad.x - 20;
+  const removeY = pad.y;
+  paintTerrainCircle(terrain, pad, removeX, removeY, 12, 'remove');
+  const removedHeight = terrainHeightAt(terrain, removeX);
+  assert.ok(removedHeight >= removeY + terrain.cellSize, 'paintTerrainCircle remove clears surface voxels');
+
+  const craterX = pad.x + pad.w / 2;
+  const craterY = pad.y + pad.h + 10;
+  deformTerrainAt(terrain, pad, craterX, craterY, 20, 20);
+  const craterHeight = terrainHeightAt(terrain, craterX);
+  assert.ok(craterHeight >= craterY + terrain.cellSize, 'deformTerrainAt carves a crater under the provided coordinates');
 }

@@ -262,6 +262,87 @@ export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+export function clamp01(value) {
+  if (!Number.isFinite(value)) return 0;
+  return clamp(value, 0, 1);
+}
+
+export function deformTerrainAt(terrain, pad, x, y, radius, depth) {
+  if (!terrain || radius <= 0) return;
+  const cellSize = terrain.cellSize;
+  const radiusSq = radius * radius;
+  const minCol = Math.max(0, Math.floor((x - radius) / cellSize));
+  const maxCol = Math.min(terrain.cols - 1, Math.ceil((x + radius) / cellSize));
+  const minRow = Math.max(0, Math.floor((y - depth - radius) / cellSize));
+  const maxRow = Math.min(terrain.rows - 1, Math.ceil((y + radius) / cellSize));
+  let removed = false;
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const cx = (col + 0.5) * cellSize;
+      const cy = (row + 0.5) * cellSize;
+      const dx = cx - x;
+      const dy = cy - y;
+      if (dx * dx + dy * dy <= radiusSq) {
+        const index = cellIndex(terrain, col, row);
+        if (terrain.solids[index] !== 0) {
+          terrain.solids[index] = 0;
+          removed = true;
+        }
+      }
+    }
+  }
+  if (removed) {
+    terrain.dirtyRender = true;
+    if (pad) {
+      alignPadToSurface(terrain, pad, pad.x + pad.w / 2, pad.y + pad.h);
+    }
+  }
+}
+
+export function paintTerrainCircle(terrain, pad, x, y, radius, mode = 'add') {
+  if (!terrain || radius <= 0) return;
+  const cellSize = terrain.cellSize;
+  const radiusSq = radius * radius;
+  const minCol = Math.max(0, Math.floor((x - radius) / cellSize));
+  const maxCol = Math.min(terrain.cols - 1, Math.ceil((x + radius) / cellSize));
+  const minRow = Math.max(0, Math.floor((y - radius) / cellSize));
+  const maxRow = Math.min(terrain.rows - 1, Math.ceil((y + radius) / cellSize));
+  let changed = false;
+  for (let row = minRow; row <= maxRow; row++) {
+    for (let col = minCol; col <= maxCol; col++) {
+      const cx = (col + 0.5) * cellSize;
+      const cy = (row + 0.5) * cellSize;
+      const dx = cx - x;
+      const dy = cy - y;
+      if (dx * dx + dy * dy <= radiusSq) {
+        const value = mode === 'remove' ? 0 : 1;
+        const index = cellIndex(terrain, col, row);
+        if (terrain.solids[index] !== value) {
+          terrain.solids[index] = value;
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) {
+    terrain.dirtyRender = true;
+    if (pad) {
+      alignPadToSurface(terrain, pad, pad.x + pad.w / 2, pad.y + pad.h);
+    }
+  }
+}
+
+export function terrainHeightAt(terrain, x) {
+  const clampedX = clamp(x, 0, terrain.width - 1);
+  const col = Math.floor(clampedX / terrain.cellSize);
+  for (let row = 0; row < terrain.rows; row++) {
+    if (terrain.solids[cellIndex(terrain, col, row)] === 1) {
+      return row * terrain.cellSize;
+    }
+  }
+  return terrain.height;
+}
+
 export function restoreTerrainFromBaseline(terrain, pad, editorState) {
   const baseline = editorState?.testBaseline;
   if (!baseline) return;

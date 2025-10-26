@@ -36,14 +36,19 @@ ready(() => {
 
   const audio = new AudioController();
 
+  const toolbar = document.getElementById('editorToolBar');
+
+  let game = null;
+
   const touchControls = new TouchControls({
     root: touchControlsEl,
     toggleButton: touchToggle,
     inputManager: input,
-    onMenu: () => game.showMenu(),
+    onMenu: () => game && game.showMenu(),
+    onBomb: () => game && game.dropBomb(),
   });
 
-  const game = createGameLoop({
+  game = createGameLoop({
     canvas,
     infoPanel,
     startMenu,
@@ -51,6 +56,8 @@ ready(() => {
     input,
     audio,
     touchControls,
+    editorPanel,
+    toolbar,
   });
 
   const menuPlayBtn = document.getElementById('menuPlay');
@@ -69,7 +76,8 @@ ready(() => {
 
   if (menuEditorBtn) {
     menuEditorBtn.addEventListener('click', () => {
-      infoPanel.setMessage('The legacy editor is not yet ported in the refactor. Play mode is available.');
+      audio.unlock();
+      game.startEditor();
     });
   }
 
@@ -89,7 +97,11 @@ ready(() => {
 
   if (postMenuBtn) {
     postMenuBtn.addEventListener('click', () => {
-      game.showMenu();
+      if (game.getMode() === 'test') {
+        game.returnToEditor();
+      } else {
+        game.showMenu();
+      }
     });
   }
 

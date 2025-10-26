@@ -1,11 +1,12 @@
 import { TOUCH_PREF_KEY } from '../constants.js';
 
 export class TouchControls {
-  constructor({ root, toggleButton, inputManager, onMenu }) {
+  constructor({ root, toggleButton, inputManager, onMenu, onBomb }) {
     this.root = root;
     this.toggleButton = toggleButton;
     this.input = inputManager;
     this.onMenu = onMenu;
+    this.onBomb = onBomb;
     this.visible = false;
     this.manualPreference = null;
     this.wantsTouchControls = false;
@@ -34,6 +35,9 @@ export class TouchControls {
       }
       if (action === 'menu' && typeof this.onMenu === 'function') {
         this.onMenu();
+      }
+      if (action === 'bomb' && typeof this.onBomb === 'function') {
+        this.onBomb();
       }
     };
     const end = (event, button) => {
