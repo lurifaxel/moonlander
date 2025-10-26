@@ -16,8 +16,13 @@ A 2D lunar-lander style game with cartoon physics:
 - Start menu with a built-in level editor for custom terrain, spawn, and landing pads.
 
 ## Run
-Open `index.html` in a modern browser (Chrome/Firefox). No build step.
-The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
+Serve the repository from a local HTTP server so modern browsers can load the ES modules without tripping CORS protections. You can start the built-in static server with:
+
+```bash
+npm run serve
+```
+
+Then open [http://localhost:8080](http://localhost:8080) in Chrome or Firefox. The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
 
 ## Controls
 - **↑**: Main engine thrust
