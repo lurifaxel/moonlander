@@ -1,6 +1,6 @@
 # Moonlander
 
-This is a game about flying a little spaceshift and landing on the moon.
+This is a game about flying a little spaceship and landing on the moon.
 
 ## What it is
 A 2D lunar-lander style game with cartoon physics:
@@ -16,8 +16,13 @@ A 2D lunar-lander style game with cartoon physics:
 - Start menu with a built-in level editor for custom terrain, spawn, and landing pads.
 
 ## Run
-Open `index.html` in a modern browser (Chrome/Firefox). No build step.
-The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
+Serve the repository from a local HTTP server so modern browsers can load the ES modules without tripping CORS protections. You can start the built-in static server with:
+
+```bash
+npm run serve
+```
+
+Then open [http://localhost:8080](http://localhost:8080) in Chrome or Firefox. The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
 
 ## Controls
 - **↑**: Main engine thrust
@@ -92,3 +97,28 @@ In `drawSmoke()`:
 - **Freeze on thrust**: Ensure `findThrusterImpact()` is defined at top level (not nested) and called from `update()`.
 - **Overlay not visible**: It must draw in identity transform and be toggled with **H**; ensure DOM `#info` is not covering it when shown.
 - **Fuel seems unchanged**: HUD now shows one decimal. Fuel depletion occurs only while thrusting.
+
+## Tests
+A minimal Node-based harness exercises the pure terrain, lander physics, and input helpers. The scripts assume Node.js 18 or newer (for native ES modules).
+
+Run the suite directly:
+
+```bash
+node tests/runTests.js
+```
+
+Or via the convenience npm script:
+
+```bash
+npm test
+```
+
+## Project layout
+```
+styles/        Extracted CSS for the game shell and overlays
+src/constants  Shared tunables and enumerations
+src/terrain    Terrain generation & collision helpers
+src/lander     Lander physics utilities
+src/ui         Vanilla DOM helpers for overlays and touch HUD
+src/main.js    Browser bootstrap wiring everything together
+```

@@ -1,0 +1,9 @@
+{
+  "name": "moonlander",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/runTests.js",
+    "serve": "node scripts/serve.js"
+  }
+}
