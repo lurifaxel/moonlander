@@ -807,6 +807,204 @@
       const MIN_VIEW_WIDTH = 600;
       const MIN_VIEW_HEIGHT = 400;
 
+      /**
+       * Encapsulates deterministic physics helpers that can be reused across gameplay and tests.
+       */
+      const Physics = (() => {
+        const DEFAULT_FUEL_BURN_RATE = 0.0005;
+
+        /**
+         * Integrates the lander's motion for a single frame.
+         * Mutates the provided lander object in-place and returns metadata about the step.
+         *
+         * @param {object} lander - Mutable lander state with position, velocity, angle, and tuning knobs.
+         * @param {number} dt - Delta time in milliseconds.
+         * @param {object} control - Control input booleans for the step.
+         * @param {object} environment - Environmental configuration and helper callbacks.
+         * @returns {{thrusterActive: boolean, thrusterDust: object|null, captureHole: any}}
+         */
+        function integrateLander(lander, dt, control, environment) {
+          const rotateLeft = !!(control && control.rotateLeft);
+          const rotateRight = !!(control && control.rotateRight);
+          const thrust = !!(control && control.thrust);
+          const g = environment && typeof environment.g === 'number' ? environment.g : 0;
+          const fuelBurnRate = environment && typeof environment.fuelBurnRate === 'number'
+            ? environment.fuelBurnRate
+            : DEFAULT_FUEL_BURN_RATE;
+          const bounce = environment && typeof environment.bounce === 'number' ? environment.bounce : 0;
+          const boundaries = environment && environment.boundaries ? environment.boundaries : null;
+          const computeBlackHoleAcceleration = environment ? environment.computeBlackHoleAcceleration : null;
+          const findBlackHoleCapture = environment ? environment.findBlackHoleCapture : null;
+          const dustOptions = environment || {};
+
+          if (rotateLeft) {
+            lander.angularVelocity -= lander.rotateAccel * dt;
+          }
+          if (rotateRight) {
+            lander.angularVelocity += lander.rotateAccel * dt;
+          }
+          lander.angularVelocity *= lander.rotateDamping;
+          lander.angle += lander.angularVelocity * dt;
+
+          let thrusterActive = false;
+          if (thrust && lander.fuel > 0) {
+            const ax = Math.sin(lander.angle) * lander.thrustPower;
+            const ay = -Math.cos(lander.angle) * lander.thrustPower;
+            lander.vx += ax * dt;
+            lander.vy += ay * dt;
+            lander.fuel -= fuelBurnRate * dt;
+            if (lander.fuel < 0) lander.fuel = 0;
+            thrusterActive = true;
+          }
+
+          lander.vy += g * dt;
+
+          if (typeof computeBlackHoleAcceleration === 'function') {
+            const holeAccel = computeBlackHoleAcceleration(lander.x, lander.y);
+            if (holeAccel) {
+              lander.vx += holeAccel.ax * dt;
+              lander.vy += holeAccel.ay * dt;
+            }
+          }
+
+          lander.x += lander.vx * dt;
+          lander.y += lander.vy * dt;
+
+          if (boundaries) {
+            const minX = typeof boundaries.minX === 'number' ? boundaries.minX : -Infinity;
+            const maxX = typeof boundaries.maxX === 'number' ? boundaries.maxX : Infinity;
+            if (lander.x < minX) {
+              lander.x = minX;
+              if (lander.vx < 0) lander.vx = -lander.vx * bounce;
+            }
+            if (lander.x > maxX) {
+              lander.x = maxX;
+              if (lander.vx > 0) lander.vx = -lander.vx * bounce;
+            }
+          }
+
+          const captureHole = typeof findBlackHoleCapture === 'function'
+            ? findBlackHoleCapture(lander.x, lander.y)
+            : null;
+
+          const thrusterDust = thrusterActive
+            ? computeThrusterDust(lander, dustOptions)
+            : null;
+
+          return {
+            thrusterActive,
+            thrusterDust,
+            captureHole,
+          };
+        }
+
+        /**
+         * Computes the thruster dust emission parameters for the current lander pose.
+         */
+        function computeThrusterDust(lander, options = {}) {
+          const castThrustRay = options.castThrustRay;
+          if (typeof castThrustRay !== 'function') {
+            return null;
+          }
+          // 70 mirrors the original DUST_MAX_DIST constant from the legacy update loop.
+          const dustMaxDistance = typeof options.dustMaxDistance === 'number' ? options.dustMaxDistance : 70;
+          const nozzleOffset = lander.height / 2;
+          const originX = lander.x - Math.sin(lander.angle) * nozzleOffset;
+          const originY = lander.y + Math.cos(lander.angle) * nozzleOffset;
+          const dirX = -Math.sin(lander.angle);
+          const dirY = Math.cos(lander.angle);
+          const maxRayDistance = dustMaxDistance / Math.max(dirY, 0.05);
+          const hit = castThrustRay(originX, originY, dirX, dirY, maxRayDistance);
+          if (!hit) {
+            return null;
+          }
+          const verticalDrop = hit.y - originY;
+          if (!(verticalDrop > 0 && verticalDrop < dustMaxDistance)) {
+            return null;
+          }
+          const prox = Math.max(0, 1 - verticalDrop / dustMaxDistance);
+          const intensity = prox * prox;
+          const baseCount = Math.floor(1 + intensity * 30);
+          return {
+            emitX: hit.x,
+            emitY: hit.y - 2,
+            spawnCount: Math.min(60, baseCount),
+            spread: 0.02 + intensity * 0.22,
+            pushUp: 0.015 + intensity * 0.1,
+            prox,
+          };
+        }
+
+        /**
+         * Evaluates whether the lander satisfies landing conditions for a safe touchdown.
+         */
+        function evaluateLanding(lander, touchingFeet, pad, terrain, thresholds = {}, resolveSurfaceY) {
+          const result = {
+            success: false,
+            reason: null,
+            touchdownY: null,
+            speed: Math.hypot(lander.vx, lander.vy),
+          };
+          if (!Array.isArray(touchingFeet) || touchingFeet.length === 0) {
+            result.reason = 'no-support';
+            return result;
+          }
+          const uprightTolerance = typeof thresholds.uprightTolerance === 'number' ? thresholds.uprightTolerance : 0.26;
+          const padMargin = typeof thresholds.padMargin === 'number' ? thresholds.padMargin : 1;
+          const surfaceGapTolerance = typeof thresholds.surfaceGapTolerance === 'number'
+            ? thresholds.surfaceGapTolerance
+            : terrain.cellSize;
+          const maxSpeed = typeof thresholds.maxSpeed === 'number' ? thresholds.maxSpeed : 0.09;
+          const maxHorizontalSpeed = typeof thresholds.maxHorizontalSpeed === 'number' ? thresholds.maxHorizontalSpeed : 0.07;
+          const maxVerticalSpeed = typeof thresholds.maxVerticalSpeed === 'number' ? thresholds.maxVerticalSpeed : 0.07;
+
+          const normalizedAngle = ((lander.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          const uprightNow = normalizedAngle < uprightTolerance || normalizedAngle > Math.PI * 2 - uprightTolerance;
+          const padLeft = pad.x - padMargin;
+          const padRight = pad.x + pad.w + padMargin;
+          const padTop = pad.y + pad.h;
+          const onPad = touchingFeet.every((pt) => {
+            if (pt.surfaceY == null) return false;
+            if (pt.x < padLeft || pt.x > padRight) return false;
+            return Math.abs(padTop - pt.surfaceY) <= surfaceGapTolerance;
+          });
+          const okSpeed = result.speed < maxSpeed;
+          const okVx = Math.abs(lander.vx) < maxHorizontalSpeed;
+          const okVy = lander.vy < maxVerticalSpeed;
+
+          if (onPad && uprightNow && okSpeed && okVx && okVy) {
+            result.success = true;
+            let touchdown = null;
+            for (const pt of touchingFeet) {
+              if (typeof pt.surfaceY === 'number') {
+                touchdown = touchdown == null ? pt.surfaceY : Math.min(touchdown, pt.surfaceY);
+              }
+            }
+            if (touchdown == null && typeof resolveSurfaceY === 'function') {
+              touchdown = resolveSurfaceY(lander.x, lander.y);
+            }
+            result.touchdownY = touchdown != null ? touchdown : lander.y;
+            return result;
+          }
+
+          result.reason = {
+            onPad,
+            upright: uprightNow,
+            okSpeed,
+            okVx,
+            okVy,
+          };
+          return result;
+        }
+
+        return {
+          integrateLander,
+          evaluateLanding,
+          computeThrusterDust,
+          DEFAULT_FUEL_BURN_RATE,
+        };
+      })();
+
       function computeDefaultTouchPreference() {
         if (coarsePointerQuery && typeof coarsePointerQuery.matches === 'boolean' && coarsePointerQuery.matches) {
           return true;
@@ -5337,75 +5535,33 @@ let camY = null;
           audio.setThrusterActive(false);
           return;
         }
-        // rotation momentum: accelerate angular velocity when rotating and apply damping
-        if (keys['ArrowLeft']) lander.angularVelocity -= lander.rotateAccel * dt;
-        if (keys['ArrowRight']) lander.angularVelocity += lander.rotateAccel * dt;
-        lander.angularVelocity *= lander.rotateDamping;
-        lander.angle += lander.angularVelocity * dt;
-        // thrust
-        if (keys['ArrowUp'] && lander.fuel > 0) {
-          const ax = Math.sin(lander.angle) * lander.thrustPower;
-          const ay = -Math.cos(lander.angle) * lander.thrustPower;
-          lander.vx += ax * dt;
-          lander.vy += ay * dt;
-          lander.fuel -= 0.0005 * dt; // ~2x slower than previous, ~160x slower than original
-          if (lander.fuel < 0) lander.fuel = 0;
-        }
-        // gravity
-        lander.vy += g * dt;
-        const holeAccel = computeBlackHoleAcceleration(lander.x, lander.y);
-        if (holeAccel) {
-          lander.vx += holeAccel.ax * dt;
-          lander.vy += holeAccel.ay * dt;
-        }
-        // update position
-        lander.x += lander.vx * dt;
-        lander.y += lander.vy * dt;
-        // horizontal boundaries sized to the current terrain width
+        // Integrate motion through the reusable physics module to keep the step deterministic
+        // and independently testable.
+        const controlState = {
+          rotateLeft: !!keys['ArrowLeft'],
+          rotateRight: !!keys['ArrowRight'],
+          thrust: !!keys['ArrowUp'],
+        };
         const edgePadding = 12;
         const minX = edgePadding;
         const maxX = Math.max(edgePadding, terrain.width - edgePadding);
-        if (lander.x < minX) {
-          lander.x = minX;
-          if (lander.vx < 0) lander.vx = -lander.vx * tune.bounce;
-        }
-        if (lander.x > maxX) {
-          lander.x = maxX;
-          if (lander.vx > 0) lander.vx = -lander.vx * tune.bounce;
-        }
-        const captureHole = findBlackHoleCapture(lander.x, lander.y);
-        if (captureHole) {
-          consumeLanderIntoBlackHole(captureHole);
+        const integrationResult = Physics.integrateLander(lander, dt, controlState, {
+          g,
+          fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+          bounce: tune.bounce,
+          boundaries: { minX, maxX },
+          computeBlackHoleAcceleration,
+          findBlackHoleCapture,
+          castThrustRay,
+        });
+        audio.setThrusterActive(integrationResult.thrusterActive);
+        if (integrationResult.captureHole) {
+          consumeLanderIntoBlackHole(integrationResult.captureHole);
           return;
         }
-        // Engine dust lifted from the ground by thrusters (emits along exhaust ray)
-        // ADJUST DUST_MAX_DIST to control when dust starts appearing
-        const DUST_MAX_DIST = 70; // px of vertical clearance; farther than this = no dust
-        const thrusting = !!keys['ArrowUp'] && lander.fuel > 0;
-        audio.setThrusterActive(thrusting);
-        if (thrusting) {
-          const nozzleOffset = lander.height / 2;
-          const originX = lander.x - Math.sin(lander.angle) * nozzleOffset;
-          const originY = lander.y + Math.cos(lander.angle) * nozzleOffset;
-          const dirX = -Math.sin(lander.angle);
-          const dirY = Math.cos(lander.angle);
-          const maxRayDistance = DUST_MAX_DIST / Math.max(dirY, 0.05);
-          const hit = castThrustRay(originX, originY, dirX, dirY, maxRayDistance);
-          if (hit) {
-            const verticalDrop = hit.y - originY;
-            if (verticalDrop > 0 && verticalDrop < DUST_MAX_DIST) {
-              // Proximity factor in [0,1]; stronger very close to ground
-              const prox = Math.max(0, 1 - verticalDrop / DUST_MAX_DIST);
-              const intensity = prox * prox; // ADJUST ramp shape
-              const baseCount = Math.floor(1 + intensity * 30); // ADJUST particle count curve
-              const spawnCount = Math.min(60, baseCount);
-              const emitX = hit.x;
-              const emitY = hit.y - 2;
-              const spread = 0.02 + intensity * 0.22; // ADJUST lateral spread
-              const pushUp = 0.015 + intensity * 0.10; // ADJUST upward lift
-              spawnSmoke(emitX, emitY, spawnCount, spread, pushUp, prox);
-            }
-          }
+        if (integrationResult.thrusterDust) {
+          const { emitX, emitY, spawnCount, spread, pushUp, prox } = integrationResult.thrusterDust;
+          spawnSmoke(emitX, emitY, spawnCount, spread, pushUp, prox);
         }
         // collisions with terrain
         const contactPoints = getLanderContactPoints();
@@ -5456,21 +5612,23 @@ let camY = null;
             const normalUp = !pt.normal || pt.normal.y <= -0.1;
             return supported && normalUp;
           });
-          const speed = Math.hypot(lander.vx, lander.vy);
-          const uprightTol = 0.26; // radians (~15°)
-          const normalizedAngle = ((lander.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-          const uprightNow = normalizedAngle < uprightTol || normalizedAngle > Math.PI * 2 - uprightTol;
-          const padLeft = pad.x - 1;
-          const padRight = pad.x + pad.w + 1;
-          const onPad = touchingFeet.length > 0 && touchingFeet.every(pt => {
-            if (pt.surfaceY == null) return false;
-            const top = pad.y + pad.h;
-            return pt.x >= padLeft && pt.x <= padRight && Math.abs(top - pt.surfaceY) <= terrain.cellSize;
-          });
-          const okSpeed = speed < 0.09;
-          const okVx = Math.abs(lander.vx) < 0.07;
-          const okVy = lander.vy < 0.07;
-          if (onPad && uprightNow && okSpeed && okVx && okVy) {
+          // Evaluate whether the lander satisfied all touchdown criteria using the reusable physics helper.
+          const landingStatus = Physics.evaluateLanding(
+            lander,
+            touchingFeet,
+            pad,
+            terrain,
+            {
+              uprightTolerance: 0.26,
+              padMargin: 1,
+              surfaceGapTolerance: terrain.cellSize,
+              maxSpeed: 0.09,
+              maxHorizontalSpeed: 0.07,
+              maxVerticalSpeed: 0.07,
+            },
+            (x, y) => groundYAt(x, y)
+          );
+          if (landingStatus.success) {
             landed = true;
             gameOver = true;
             exploded = false;
@@ -5490,8 +5648,8 @@ let camY = null;
                 : 'Nice landing! Press R to restart or N for the next level';
               showPostLevelMenu('success', message, upcoming);
             }
-            const touchdownY = touchingFeet.length
-              ? touchingFeet.reduce((min, pt) => Math.min(min, pt.surfaceY ?? min), touchingFeet[0].surfaceY ?? lander.y)
+            const touchdownY = landingStatus.touchdownY != null
+              ? landingStatus.touchdownY
               : groundYAt(lander.x, lander.y);
             spawnWinFx(lander.x, touchdownY - 12);
             padFlash = 1200;
@@ -5503,6 +5661,162 @@ let camY = null;
             spawnExplosion(crashX, crashY, lander.vx, lander.vy);
           }
         }
+      }
+
+      const testSuite = createTestSuite();
+
+      /**
+       * Builds a zero-dependency test harness for deterministic verification of core game logic.
+       */
+      function createTestSuite() {
+        const tests = [];
+
+        function expect(condition, message) {
+          if (!condition) {
+            throw new Error(message);
+          }
+        }
+
+        function addTest(name, fn) {
+          tests.push({ name, fn });
+        }
+
+        addTest('physics.integrateLander applies thrust and consumes fuel', () => {
+          const landerState = {
+            x: 0,
+            y: 0,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          const initialFuel = landerState.fuel;
+          const result = Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: false, thrust: true },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: -100, maxX: 100 },
+            },
+          );
+          expect(result.thrusterActive, 'Thruster should activate when thrust control is engaged and fuel remains.');
+          expect(landerState.vy < 0, 'Thruster should impart upward acceleration.');
+          expect(landerState.fuel < initialFuel, 'Fuel should decrease when thrusting.');
+        });
+
+        addTest('physics.integrateLander respects horizontal bounds', () => {
+          const landerState = {
+            x: -5,
+            y: 0,
+            vx: -0.1,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 1,
+            thrustPower: 0,
+            fuel: 0,
+            height: 24,
+          };
+          Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: false, thrust: false },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0.5,
+              boundaries: { minX: 0, maxX: 100 },
+            },
+          );
+          expect(landerState.x === 0, 'Lander should clamp to the minimum boundary.');
+          expect(landerState.vx >= 0, 'Lander should bounce horizontally when striking the boundary.');
+        });
+
+        addTest('physics.evaluateLanding recognises safe touchdown', () => {
+          const pad = { x: 50, y: 100, w: 60, h: 10 };
+          const terrain = { cellSize: 8 };
+          const landerState = {
+            x: 80,
+            y: 100,
+            vx: 0.01,
+            vy: -0.01,
+            angle: 0.02,
+          };
+          const touchingFeet = [
+            { surfaceY: 110, x: 70, gap: 0, penetration: 1, normal: { y: -1 } },
+            { surfaceY: 110, x: 90, gap: 0, penetration: 1, normal: { y: -1 } },
+          ];
+          const result = Physics.evaluateLanding(
+            landerState,
+            touchingFeet,
+            pad,
+            terrain,
+            {
+              uprightTolerance: 0.26,
+              padMargin: 1,
+              surfaceGapTolerance: terrain.cellSize,
+              maxSpeed: 0.09,
+              maxHorizontalSpeed: 0.07,
+              maxVerticalSpeed: 0.07,
+            },
+            () => 110,
+          );
+          expect(result.success, 'Landing should be successful when all thresholds are satisfied.');
+          expect(Math.abs(result.touchdownY - 110) < 1e-3, 'Touchdown height should match the supporting surface.');
+        });
+
+        function now() {
+          if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
+            return performance.now();
+          }
+          return Date.now();
+        }
+
+        function runAll(options = {}) {
+          const results = [];
+          for (const test of tests) {
+            const start = now();
+            try {
+              test.fn({ expect });
+              const duration = now() - start;
+              results.push({ name: test.name, success: true, duration });
+            } catch (error) {
+              const duration = now() - start;
+              results.push({ name: test.name, success: false, error, duration });
+            }
+          }
+          if (options.log !== false) {
+            results.forEach((result) => {
+              if (result.success) {
+                console.info(`[MoonLander][test] ✅ ${result.name} (${result.duration.toFixed(3)}ms)`);
+              } else {
+                console.error(`[MoonLander][test] ❌ ${result.name}`, result.error);
+              }
+            });
+          }
+          if (options.updateInfoPanel) {
+            const passed = results.filter(r => r.success).length;
+            const summary = `${passed}/${results.length} tests passed`;
+            setInfoMessage(summary, 'Test Suite');
+          }
+          return results;
+        }
+
+        return {
+          addTest,
+          runAll,
+          expect,
+          tests,
+        };
       }
 
       function loop(timestamp) {
@@ -5589,16 +5903,70 @@ let camY = null;
         requestAnimationFrame(loop);
       }
 
-      window.addEventListener('resize', () => {
+      function handleResize() {
         resizeCanvas();
         if (manualTouchPreference === null) {
           refreshTouchControlsPreference();
         }
-      });
-      resizeCanvas();
-      enterMenu();
-      updateEditorOverlay();
-      requestAnimationFrame(loop);
+      }
+
+      /**
+       * Boots the Moon Lander game loop and initialises UI state.
+       */
+      function startGame() {
+        window.addEventListener('resize', handleResize);
+        handleResize();
+        enterMenu();
+        updateEditorOverlay();
+        requestAnimationFrame(loop);
+      }
+
+      /**
+       * Determines whether the embedded test suite should run automatically based on URL flags.
+       */
+      function shouldAutoRunTests() {
+        if (typeof window === 'undefined') return false;
+        const hash = window.location.hash || '';
+        const query = window.location.search || '';
+        return hash.includes('run-tests') || query.includes('run-tests');
+      }
+
+      /**
+       * Exposes a lightweight snapshot of runtime state for debugging and tests.
+       */
+      function getStateSnapshot() {
+        return {
+          mode: appMode,
+          gameOver,
+          level: terrain ? terrain.levelName : null,
+          lander: {
+            x: lander.x,
+            y: lander.y,
+            vx: lander.vx,
+            vy: lander.vy,
+            angle: lander.angle,
+            fuel: lander.fuel,
+          },
+        };
+      }
+
+      const moonLanderAPI = {
+        start: startGame,
+        physics: Physics,
+        tests: {
+          runAll: testSuite.runAll,
+          list: () => testSuite.tests.map(test => test.name),
+        },
+        getStateSnapshot,
+      };
+
+      window.MoonLander = moonLanderAPI;
+
+      startGame();
+
+      if (shouldAutoRunTests()) {
+        moonLanderAPI.tests.runAll({ updateInfoPanel: true });
+      }
     })();
   </script>
 </body>

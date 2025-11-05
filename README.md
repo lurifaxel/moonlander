@@ -19,6 +19,12 @@ A 2D lunar-lander style game with cartoon physics:
 Open `index.html` in a modern browser (Chrome/Firefox). No build step.
 The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
 
+### Tests
+
+In-browser console: Open index.html in any modern browser, wait for the game to load, open the developer console, and call MoonLander.tests.runAll(). This triggers every registered test, logs pass/fail details, and returns the aggregated results object. You can also inspect the available test names with MoonLander.tests.list().
+
+Automatic run on load: Append ?run-tests to the URL as a query string (e.g., file:///.../index.html?run-tests). When the page boots, it detects that flag and invokes the suite automatically, updating the in-game info panel with the pass summary.
+
 ## Controls
 - **↑**: Main engine thrust
 - **← / →**: Rotate (with momentum)
