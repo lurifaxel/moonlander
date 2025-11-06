@@ -1,100 +1,73 @@
-# Moonlander
+# Moonlander (Phaser Edition)
 
-This is a game about flying a little spaceshift and landing on the moon.
+A Phaser 3 powered lunar landing game featuring arcade physics, a streamlined level editor, and built-in diagnostics. Pilot a retro lander across handcrafted missions or sculpt your own terrain, all while enjoying a modern tooling setup backed by Vite.
 
-## What it is
-A 2D lunar-lander style game with cartoon physics:
-- Procedural terrain with peaks/valleys plus a flat pad.
-- Smoothed camera with look‑ahead, parallax starfield background.
-- Fuel‑limited thrust, rotational momentum.
-- Crash explosion with bouncing debris.
-- Ground‑sourced **dust** kicked up by the thrusters; size + opacity scale with proximity to the surface and exhaust ray impact.
-- Editor-placed **black holes** that tug ships, bombs, dust, and debris; cross the event horizon and the lander shreds into inward-spiraling fragments while the singularity remains untouched.
-- Configurable **meteors** with flashing warnings, fiery trails, and dust-heavy impacts that carve new craters into the terrain.
-- Success celebration confetti + pad glow.
-- Level regeneration **only after** a successful landing.
-- Start menu with a built-in level editor for custom terrain, spawn, and landing pads.
+## Features
+- **Phaser gameplay loop** – Matter.js physics powers the lander, terrain, and landing checks with smooth camera follow and parallax space backdrops.
+- **Mission roster** – Three built-in scenarios (Apollo Valley, Tycho Trench, Darkside Ridge) plus a persistent custom slot saved to localStorage.
+- **Touch + keyboard controls** – Desktop players use the arrow keys/WASD; mobile devices get a dedicated virtual pad for thrust, yaw, and bomb actions.
+- **In-browser editor** – Drag terrain control points, reposition spawn/pad markers, and toggle circular crater hazards directly inside the Phaser scene.
+- **Diagnostics harness** – One-click regression checks validate pad sizing, hazard definitions, terrain continuity, and fuel budgets with results streamed to the diagnostics panel.
+- **Accessible overlays** – DOM-driven HUD, pause/menu dialogs, and post-mission summaries stay in sync with the active Phaser scene via a shared event bus.
 
-## Run
-Open `index.html` in a modern browser (Chrome/Firefox). No build step.
-The playfield auto-resizes to roughly 90% of the viewport (capped at 1280x720 and never smaller than 600x400) and stays centered for an immersive view.
+## Getting started
 
-### Tests
+```bash
+npm install
+npm run dev
+```
 
-In-browser console: Open index.html in any modern browser, wait for the game to load, open the developer console, and call MoonLander.tests.runAll(). This triggers every registered test, logs pass/fail details, and returns the aggregated results object. You can also inspect the available test names with MoonLander.tests.list().
+Then open the reported local URL (defaults to `http://localhost:5173/`). The development build supports hot module replacement—changes to UI panels, scenes, or state modules reload instantly.
 
-Automatic run on load: Append ?run-tests to the URL as a query string (e.g., file:///.../index.html?run-tests). When the page boots, it detects that flag and invokes the suite automatically, updating the in-game info panel with the pass summary.
+For a production build run:
+
+```bash
+npm run build
+npm run preview
+```
 
 ## Controls
-- **↑**: Main engine thrust
-- **← / →**: Rotate (with momentum)
-- **R**: Restart round
-- **H**: Toggle debug/tuning overlay (if enabled in code)
-- **Esc**: Return to the main menu (or back to the editor when testing custom levels)
+- **Thrust** – <kbd>Up</kbd> / <kbd>W</kbd> or tap the on-screen Thrust button
+- **Rotate** – <kbd>Left</kbd>/<kbd>Right</kbd> arrows or <kbd>A</kbd>/<kbd>D</kbd>; touch pad provides dedicated yaw buttons
+- **Bomb** – Press <kbd>B</kbd> (desktop) or tap Bomb to clear the nearest crater hazard
+- **Menu** – Choose _Start Mission_, _Resume_, _Open Editor_, or _Run Diagnostics_ from the overlay
 
-### Level editor
-Choose **Create Level** on the start menu to enter the editor:
-- **Left-click & drag**: sculpt the ground contour in realtime.
-- **Scroll wheel** or press **1–4**: cycle the active placement between spawn point, landing zone, black hole, and meteor.
-- **Click** (without dragging): place the currently selected object. Black holes snap to open space and pull nearby objects during test flights.
-- **Drag** the selected object: move spawn points, slide the landing zone, reposition black holes, or grab meteor handles (start, end, or mid-path) to retarget their strikes.
-- **R**: spawn the lander to test your custom level.
-- **Esc**: leave test mode back to editing, or exit the editor to the start menu.
-- **Hold Alt + drag**: carve terrain away to sculpt caverns and overhangs; release Alt to add material again.
-- **Alt + click** while **Black hole** is selected: remove the nearest hole inside the dashed event-horizon guide.
-- Landing pads snap to the surface you click—even under overhangs—so you can build cavern pads.
-- **Meteor tool**: click and drag to define the meteor’s path (the rock always spawns above the viewport), `Alt + click` to delete the nearest meteor, use `[ / ]`, `- / =`, `, / .`, and `; / '` to tweak size, speed, warning lead time, and arrival time, or click the meteor panel fields to edit those values directly.
+## Level editor workflow
+1. From the main menu pick **Open Editor**.
+2. Use the palette to choose a tool:
+   - **Terrain** – drag existing control points to reshape ridges and valleys.
+   - **Set Spawn** – tap a new launch location within the safe airspace band.
+   - **Set Landing Pad** – place the pad horizontally; width is preserved.
+   - **Toggle Hazard** – tap to add/remove crater hazards (red circles).
+3. Click **Save Level** to persist the layout as the **Custom Mission** slot.
+4. **Test Level** exits the editor and launches straight into a play session using the custom configuration.
 
-## Gameplay rules
-- Land while **over the pad**, roughly upright, and below speed thresholds. On success, you’ll see confetti and a glowing pad. Press **R** for the **next level** (terrain regenerates).
-- On crash, debris flies and bounces. Press **R** to retry on the **same terrain**.
-- Black holes are lethal: their gravity wells bend bomb arcs, drag dust streams, and if the lander slips inside the event horizon it collapses into debris with no terrain crater.
-- Meteors telegraph with flashing ghost projections and a warning chime; vacate their path or they’ll vaporize the ship (and any bombs) while blasting new craters into the surface.
+## Diagnostics
+Select **Run Diagnostics** from the menu to execute the regression suite against the active mission. The diagnostics panel reports pass/fail counts alongside detailed notes for any failing checks. Close the panel to return to the menu and adjust your level.
 
-## Systems
-- **Terrain**
-  - `generateTerrain()` builds a solid grid of voxels, flattening a pad segment for stock levels while the editor can add or carve cells away.
-  - Helpers such as `groundYAt(x)`/`findSurfaceBelow(x, y)` turn the grid into collision surfaces.
-  - Regenerated only when `shouldRegen` is set by a successful landing.
-- **Camera & Parallax**
-  - Smoothed follow with velocity‑based look‑ahead. Parallax layers scroll by `camX/camY`.
-- **Particles**
-  - **Dust**: `spawnSmoke`/`updateSmoke`/`drawSmoke` emit from the **terrain** at the **exhaust ray impact** (`findThrusterImpact()`). Proximity controls emission density, size, and opacity.
-  - **Debris**: `spawnExplosion` + `updateDebris` + `drawDebris` on crash.
-  - **Confetti**: `spawnWinFx` + `updateWinFx` + `drawWinFx` on success.
-- **Black holes**
-  - Stored on `terrain.blackHoles` (editor) and cloned into `activeBlackHoles` for play. The editor placements are serialized alongside terrain voxels.
-  - `computeBlackHoleAcceleration()` applies falloff-capped gravity to the lander, bombs, debris, dust, and blast smoke. `findBlackHoleCapture()` detects event-horizon entry for ships and particles.
-  - `consumeLanderIntoBlackHole()` creates the singularity death sequence without deforming terrain, and `absorbBombIntoBlackHole()` swallows bombs without triggering `explodeBomb()`.
-- **Meteors**
-  - Level data supplies timed meteor entries (`startMs`, `warningLeadMs`, `radius`, `speed`, `spawn`, `target`). `resetMeteorState()` normalizes and schedules them while tests/plays clone editor definitions into `terrain.meteors`.
-  - `updateMeteors()` handles warning ghosts (`spawnMeteorWarning()`), active projectile physics/trails, and impact resolution (`resolveMeteorImpact()`), chaining into `applyExplosionEffects()` so bombs and the lander react to meteor blasts.
-  - Rendering splits between flashing path previews (`drawMeteorWarnings()`) and fiery streaks (`drawMeteors()`), reusing `blastSmoke` for dust plumes and `debris` for sparks.
-- **Success / Failure**
-  - Landing thresholds are modest (upright tolerance, max speed, vx/vy). On success, `shouldRegen=true`; on crash, terrain persists.
+## Project structure
+```
+.
+├── AGENTS.md                 # Contributor guidelines and project tree
+├── CHANGELOG.md              # Historical summary of notable changes
+├── README.md                 # This document
+├── docs/                     # Process notes and feature plans
+├── index.html                # Root HTML shell containing DOM overlays
+├── package.json              # npm scripts and dependencies (Phaser, Vite)
+├── src/
+│   ├── main.js               # Vite entry point that boots Phaser + UI bridge
+│   ├── scenes/               # Boot, menu, play, and editor Phaser scenes
+│   ├── game/
+│   │   ├── events.js         # Shared event bus for scenes and overlays
+│   │   ├── objects/          # Game objects (e.g., Lander)
+│   │   └── state/            # Level data, terrain helpers, audio, diagnostics
+│   └── ui/                   # DOM overlay controllers (HUD, menu, touch, etc.)
+├── space_far.png             # Parallax background (distant stars)
+└── space_near.png            # Parallax background (foreground stars)
+```
 
-## Tuning (live during play)
-Some builds include a live tuning overlay and hotkeys. If present, the overlay shows current values and the keys below adjust them:
-- Camera: lag (Q/A), look‑ahead gains (W/S, E/D), look cap (R/F)
-- Parallax: far (T/G), near (Y/X)
-- Ship: thrust (U/J), rotate accel (I/K), rotate damping (O/L)
-- World: gravity (P/;), debris bounce (B/N), debris friction (M/,)
+## Browser support
+Moonlander targets modern Chromium, Firefox, and Safari releases. Mobile devices automatically surface the touch controls. Audio playback is optional and activates once the user interacts with the page.
 
-### Dust tuning
-In `update()` emission block:
-- `DUST_MAX_RAY`: when dust starts based on exhaust–terrain distance. // start dust only when nozzle-to-ground ray is shorter than this
-- `intensity` curve: proximity response (e.g., `prox**2` vs `prox**3`).
-- `spawnCount` formula: density.
-- `spread`/`pushUp`: lateral spread and lift.
-
-In `spawnSmoke()`:
-- `baseR`: base dust size; `sizeBoost = 4 * prox` increases near ground. // stronger near-ground size gain
-- Lifetimes: `life` and `maxLife`.
-
-In `drawSmoke()`:
-- `aProx = 0.25 + 0.75*(p.prox)`: proximity effect on opacity.
-
-## Troubleshooting
-- **Freeze on thrust**: Ensure `findThrusterImpact()` is defined at top level (not nested) and called from `update()`.
-- **Overlay not visible**: It must draw in identity transform and be toggled with **H**; ensure DOM `#info` is not covering it when shown.
-- **Fuel seems unchanged**: HUD now shows one decimal. Fuel depletion occurs only while thrusting.
+## License
+The project ships without an explicit license—treat it as all rights reserved unless instructed otherwise.
