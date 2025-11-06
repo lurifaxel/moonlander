@@ -152,11 +152,11 @@ export default class PlayScene extends Phaser.Scene {
   evaluateLanding() {
     if (this.completed) return;
     const body = this.lander.body;
-    const angleDeg = Phaser.Math.RadToDeg(body.angle);
+    const angleDeg = Math.abs(Phaser.Math.RadToDeg(body.angle));
     const verticalSpeed = Math.abs(body.velocity.y * 60);
     const horizontalSpeed = Math.abs(body.velocity.x * 60);
     const withinPad = Math.abs(body.position.x - this.level.pad.x) <= this.level.pad.width / 2;
-    if (angleDeg < 15 && verticalSpeed < 20 && horizontalSpeed < 15 && withinPad) {
+    if (angleDeg < 25 && verticalSpeed < 28 && horizontalSpeed < 18 && withinPad) {
       this.completeMission();
     } else {
       this.failMission('Landing parameters exceeded safety limits.');

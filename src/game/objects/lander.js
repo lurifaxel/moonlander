@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 
 const MATTER = Phaser.Physics.Matter.Matter;
-const THRUST_FORCE = 0.00085;
-const TORQUE_FORCE = 0.00025;
-const FUEL_BURN_RATE = 24;
+const THRUST_FORCE = 0.00135;
+const TORQUE_FORCE = 0.00038;
+const FUEL_BURN_RATE = 16;
 
 export class Lander {
   constructor(scene, spawn, { fuel = 120 } = {}) {

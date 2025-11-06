@@ -52,10 +52,17 @@ export default class MenuScene extends Phaser.Scene {
     showMenu(false);
     showEditorPanel(false);
     const level = getActiveLevel();
+    const data = { level, resume };
+    const playIsRunning = this.scene.isActive('play') || this.scene.isPaused?.('play') || this.scene.isSleeping?.('play');
+    if (playIsRunning) {
+      const playScene = this.scene.get('play');
+      playScene?.scene.restart(data);
+    } else {
+      this.scene.run('play', data);
+    }
     if (!resume) {
       this.hasActiveSession = true;
     }
-    this.scene.launch('play', { level, resume });
     this.scene.bringToTop('play');
     gameEvents.emit(GameEvent.GAME_READY, { hasActiveSession: this.hasActiveSession });
   }

@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced the monolithic canvas script with a modular `src/` directory (scenes, state managers, UI bridges).
 - Updated the HTML shell to mount Phaser beneath reusable HUD/menu/touch overlays.
 - Reworked the editor into a drag-and-drop control-point experience with spawn/pad markers.
+- Tuned lander thrust, rotation authority, and fuel consumption to make stable descents easier.
+
+### Fixed
+
+- Mission restarts from the menu, post-flight panel, and editor test mode reliably relaunch the play scene after crashes.
 
 ## [0.1.0] - 2025-10-04
 
