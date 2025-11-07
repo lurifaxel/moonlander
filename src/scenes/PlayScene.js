@@ -91,10 +91,15 @@ export default class PlayScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       a: Phaser.Input.Keyboard.KeyCodes.A,
       d: Phaser.Input.Keyboard.KeyCodes.D,
-      w: Phaser.Input.Keyboard.KeyCodes.W
+      w: Phaser.Input.Keyboard.KeyCodes.W,
+      esc: Phaser.Input.Keyboard.KeyCodes.ESC
     });
-    this.input.keyboard.on('keydown-B', () => this.triggerBomb());
-    this.input.keyboard.on('keydown-SPACE', () => this.triggerThrust());
+    this.bombHandler = () => this.triggerBomb();
+    this.thrustHandler = () => this.triggerThrust();
+    this.escapeHandler = (event) => this.handleEscape(event);
+    this.input.keyboard.on('keydown-B', this.bombHandler);
+    this.input.keyboard.on('keydown-SPACE', this.thrustHandler);
+    this.input.keyboard.on('keydown-ESC', this.escapeHandler);
   }
 
   triggerBomb() {
@@ -106,6 +111,13 @@ export default class PlayScene extends Phaser.Scene {
 
   triggerThrust() {
     this.pendingInput.thrust = true;
+  }
+
+  handleEscape(event) {
+    if (event?.repeat) return;
+    if (this.completed) return;
+    this.scene.pause();
+    gameEvents.emit(GameEvent.REQUEST_MENU, { pause: true });
   }
 
   handleBomb() {
@@ -192,6 +204,11 @@ export default class PlayScene extends Phaser.Scene {
 
   shutdown() {
     this.touchOff?.();
+    if (this.input?.keyboard) {
+      this.input.keyboard.off('keydown-B', this.bombHandler);
+      this.input.keyboard.off('keydown-SPACE', this.thrustHandler);
+      this.input.keyboard.off('keydown-ESC', this.escapeHandler);
+    }
     if (this.collisionHandler) {
       this.matter.world.off('collisionstart', this.collisionHandler);
       this.collisionHandler = null;

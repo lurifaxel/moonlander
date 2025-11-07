@@ -33,7 +33,7 @@ export default class MenuScene extends Phaser.Scene {
     this.unsubscribers = [
       gameEvents.on(GameEvent.REQUEST_START, () => this.startMission(false)),
       gameEvents.on(GameEvent.REQUEST_RESUME, () => this.startMission(true)),
-      gameEvents.on(GameEvent.REQUEST_MENU, () => this.returnToMenu()),
+      gameEvents.on(GameEvent.REQUEST_MENU, (options) => this.returnToMenu(options)),
       gameEvents.on(GameEvent.REQUEST_EDITOR, () => this.openEditor()),
       gameEvents.on(GameEvent.REQUEST_TESTS, () => this.runDiagnostics()),
       gameEvents.on(GameEvent.LEVEL_SELECTED, (id) => {
@@ -53,26 +53,40 @@ export default class MenuScene extends Phaser.Scene {
     showEditorPanel(false);
     const level = getActiveLevel();
     const data = { level, resume };
-    const playIsRunning = this.scene.isActive('play') || this.scene.isPaused?.('play') || this.scene.isSleeping?.('play');
-    if (playIsRunning) {
-      const playScene = this.scene.get('play');
-      playScene?.scene.restart(data);
+    const isPaused = this.scene.isPaused('play');
+    const isActive = this.scene.isActive('play');
+    if (resume && (isPaused || isActive)) {
+      if (isPaused) {
+        this.scene.resume('play');
+      }
+      this.scene.bringToTop('play');
     } else {
-      this.scene.run('play', data);
-    }
-    if (!resume) {
+      if (isPaused || isActive) {
+        this.scene.stop('play');
+      }
+      this.scene.launch('play', data);
+      this.scene.bringToTop('play');
       this.hasActiveSession = true;
     }
-    this.scene.bringToTop('play');
     gameEvents.emit(GameEvent.GAME_READY, { hasActiveSession: this.hasActiveSession });
   }
 
-  returnToMenu() {
-    this.scene.stop('play');
-    this.scene.stop('editor');
+  returnToMenu(options = {}) {
+    const pause = options?.pause;
+    if (pause) {
+      if (this.scene.isActive('play')) {
+        this.scene.pause('play');
+      }
+    } else {
+      this.scene.stop('play');
+      this.scene.stop('editor');
+      this.hasActiveSession = false;
+    }
     showEditorPanel(false);
     showMenu(true);
-    this.hasActiveSession = false;
+    if (pause && (this.scene.isPaused('play') || this.scene.isActive('play'))) {
+      this.hasActiveSession = true;
+    }
     gameEvents.emit(GameEvent.GAME_READY, { hasActiveSession: this.hasActiveSession });
   }
 
