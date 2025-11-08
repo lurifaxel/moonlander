@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Mission restarts from the menu, post-flight panel, and editor test mode reliably relaunch the play scene after crashes.
+- Flush pending Phaser scene operations when swapping from the menu so retry and next-level buttons react immediately.
 
 ## [0.1.0] - 2025-10-04
 

@@ -68,6 +68,7 @@ export default class MenuScene extends Phaser.Scene {
       this.scene.bringToTop('play');
       this.hasActiveSession = true;
     }
+    this.scene.manager.processQueue();
     gameEvents.emit(GameEvent.GAME_READY, { hasActiveSession: this.hasActiveSession });
   }
 
@@ -87,6 +88,7 @@ export default class MenuScene extends Phaser.Scene {
     if (pause && (this.scene.isPaused('play') || this.scene.isActive('play'))) {
       this.hasActiveSession = true;
     }
+    this.scene.manager.processQueue();
     gameEvents.emit(GameEvent.GAME_READY, { hasActiveSession: this.hasActiveSession });
   }
 

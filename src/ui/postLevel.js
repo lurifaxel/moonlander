@@ -30,6 +30,7 @@ export function initPostLevel() {
   gameEvents.on(GameEvent.REQUEST_TESTS, hide);
   gameEvents.on(GameEvent.LEVEL_SELECTED, hide);
   gameEvents.on(GameEvent.REQUEST_RETRY, hide);
+  gameEvents.on(GameEvent.REQUEST_NEXT_LEVEL, hide);
 }
 
 export function hide() {
