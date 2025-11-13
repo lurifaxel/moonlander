@@ -20,11 +20,16 @@ The `docs` directory contains instructions for certain actions. When the user as
 .
 ├── AGENTS.md — Contributor guidelines for this repository
 ├── CHANGELOG.md — Historical summary of notable changes
-├── README.md — Overview and quick-start details for the Moon Lander game
+├── README.md — Overview and quick-start details for the Phaser build
 ├── docs/ — Supplemental documentation and process guides
 │   ├── commands/ — Task-specific instructions (refactor, docs, planning, etc.)
 │   └── features/ — Feature briefs and background material
-├── index.html — Single-file Moon Lander game, editor, and embedded tests
+├── index.html — HTML shell with HUD/menu/touch overlays that boot Phaser
+├── package.json — npm metadata and scripts (dev, build, preview)
+├── src/ — Phaser scenes, state modules, and DOM overlay controllers
+│   ├── game/ — Shared event bus, state helpers, audio bridge, and lander object
+│   ├── scenes/ — Boot/menu/play/editor Phaser scenes
+│   └── ui/ — HUD, menu, touch controls, diagnostics, and editor palette wiring
 ├── space_far.png — Parallax background layer (far)
 └── space_near.png — Parallax background layer (near)
 ```
