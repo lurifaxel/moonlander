@@ -5829,6 +5829,381 @@ let camY = null;
           expect(Math.abs(result.touchdownY - 110) < 1e-3, 'Touchdown height should match the supporting surface.');
         });
 
+        addTest('physics.integrateLander applies gravity', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: false, thrust: false },
+            {
+              g: 0.001,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: 0, maxX: 200 },
+            },
+          );
+          expect(landerState.vy > 0, 'Gravity should increase downward velocity (positive Y).');
+          expect(landerState.y > 100, 'Lander should move downward under gravity.');
+        });
+
+        addTest('physics.integrateLander handles rotation left', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: true, rotateRight: false, thrust: false },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: 0, maxX: 200 },
+            },
+          );
+          expect(landerState.angularVelocity < 0, 'Rotating left should produce negative angular velocity.');
+          expect(landerState.angle < 0, 'Angle should decrease when rotating left.');
+        });
+
+        addTest('physics.integrateLander handles rotation right', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: true, thrust: false },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: 0, maxX: 200 },
+            },
+          );
+          expect(landerState.angularVelocity > 0, 'Rotating right should produce positive angular velocity.');
+          expect(landerState.angle > 0, 'Angle should increase when rotating right.');
+        });
+
+        addTest('physics.integrateLander does not burn fuel when thrust with no fuel', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 0,
+            height: 24,
+          };
+          const result = Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: false, thrust: true },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: 0, maxX: 200 },
+            },
+          );
+          expect(!result.thrusterActive, 'Thruster should not activate when fuel is depleted.');
+          expect(landerState.fuel === 0, 'Fuel should remain at zero.');
+        });
+
+        addTest('physics.integrateLander applies black hole acceleration', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          const mockBlackHoleAccel = (x, y) => ({ ax: 0.002, ay: 0.001 });
+          Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: false, thrust: false },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: 0, maxX: 200 },
+              computeBlackHoleAcceleration: mockBlackHoleAccel,
+            },
+          );
+          expect(landerState.vx > 0, 'Black hole should impart horizontal acceleration.');
+          expect(landerState.vy > 0, 'Black hole should impart vertical acceleration.');
+        });
+
+        addTest('physics.integrateLander detects black hole capture', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          const mockHole = { x: 100, y: 100, id: 'test-hole' };
+          const mockFindCapture = (x, y) => mockHole;
+          const result = Physics.integrateLander(
+            landerState,
+            16,
+            { rotateLeft: false, rotateRight: false, thrust: false },
+            {
+              g: 0,
+              fuelBurnRate: Physics.DEFAULT_FUEL_BURN_RATE,
+              bounce: 0,
+              boundaries: { minX: 0, maxX: 200 },
+              findBlackHoleCapture: mockFindCapture,
+            },
+          );
+          expect(result.captureHole === mockHole, 'Result should report black hole capture.');
+        });
+
+        addTest('physics.evaluateLanding rejects landing when too fast', () => {
+          const pad = { x: 50, y: 100, w: 60, h: 10 };
+          const terrain = { cellSize: 8 };
+          const landerState = {
+            x: 80,
+            y: 100,
+            vx: 0.5,
+            vy: 0.01,
+            angle: 0.02,
+          };
+          const touchingFeet = [
+            { surfaceY: 110, x: 70, gap: 0, penetration: 1, normal: { y: -1 } },
+            { surfaceY: 110, x: 90, gap: 0, penetration: 1, normal: { y: -1 } },
+          ];
+          const result = Physics.evaluateLanding(
+            landerState,
+            touchingFeet,
+            pad,
+            terrain,
+            {
+              uprightTolerance: 0.26,
+              padMargin: 1,
+              surfaceGapTolerance: terrain.cellSize,
+              maxSpeed: 0.09,
+              maxHorizontalSpeed: 0.07,
+              maxVerticalSpeed: 0.07,
+            },
+            () => 110,
+          );
+          expect(!result.success, 'Landing should fail when speed is too high.');
+          expect(result.reason.okVx === false, 'Reason should indicate horizontal speed violation.');
+        });
+
+        addTest('physics.evaluateLanding rejects landing when not on pad', () => {
+          const pad = { x: 50, y: 100, w: 60, h: 10 };
+          const terrain = { cellSize: 8 };
+          const landerState = {
+            x: 20,
+            y: 100,
+            vx: 0.01,
+            vy: 0.01,
+            angle: 0.02,
+          };
+          const touchingFeet = [
+            { surfaceY: 110, x: 15, gap: 0, penetration: 1, normal: { y: -1 } },
+            { surfaceY: 110, x: 25, gap: 0, penetration: 1, normal: { y: -1 } },
+          ];
+          const result = Physics.evaluateLanding(
+            landerState,
+            touchingFeet,
+            pad,
+            terrain,
+            {
+              uprightTolerance: 0.26,
+              padMargin: 1,
+              surfaceGapTolerance: terrain.cellSize,
+              maxSpeed: 0.09,
+              maxHorizontalSpeed: 0.07,
+              maxVerticalSpeed: 0.07,
+            },
+            () => 110,
+          );
+          expect(!result.success, 'Landing should fail when not positioned over the pad.');
+          expect(result.reason.onPad === false, 'Reason should indicate pad position violation.');
+        });
+
+        addTest('physics.evaluateLanding rejects landing when tilted', () => {
+          const pad = { x: 50, y: 100, w: 60, h: 10 };
+          const terrain = { cellSize: 8 };
+          const landerState = {
+            x: 80,
+            y: 100,
+            vx: 0.01,
+            vy: 0.01,
+            angle: Math.PI / 3,
+          };
+          const touchingFeet = [
+            { surfaceY: 110, x: 70, gap: 0, penetration: 1, normal: { y: -1 } },
+            { surfaceY: 110, x: 90, gap: 0, penetration: 1, normal: { y: -1 } },
+          ];
+          const result = Physics.evaluateLanding(
+            landerState,
+            touchingFeet,
+            pad,
+            terrain,
+            {
+              uprightTolerance: 0.26,
+              padMargin: 1,
+              surfaceGapTolerance: terrain.cellSize,
+              maxSpeed: 0.09,
+              maxHorizontalSpeed: 0.07,
+              maxVerticalSpeed: 0.07,
+            },
+            () => 110,
+          );
+          expect(!result.success, 'Landing should fail when lander is tilted beyond tolerance.');
+          expect(result.reason.upright === false, 'Reason should indicate upright angle violation.');
+        });
+
+        addTest('physics.evaluateLanding rejects landing without support', () => {
+          const pad = { x: 50, y: 100, w: 60, h: 10 };
+          const terrain = { cellSize: 8 };
+          const landerState = {
+            x: 80,
+            y: 100,
+            vx: 0.01,
+            vy: 0.01,
+            angle: 0.02,
+          };
+          const touchingFeet = [];
+          const result = Physics.evaluateLanding(
+            landerState,
+            touchingFeet,
+            pad,
+            terrain,
+            {
+              uprightTolerance: 0.26,
+              padMargin: 1,
+              surfaceGapTolerance: terrain.cellSize,
+              maxSpeed: 0.09,
+              maxHorizontalSpeed: 0.07,
+              maxVerticalSpeed: 0.07,
+            },
+            () => 110,
+          );
+          expect(!result.success, 'Landing should fail when no feet are touching ground.');
+          expect(result.reason === 'no-support', 'Reason should indicate lack of support.');
+        });
+
+        addTest('physics.computeThrusterDust returns null when no ray caster provided', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          const dust = Physics.computeThrusterDust(landerState, {});
+          expect(dust === null, 'Dust computation should return null when no ray caster is provided.');
+        });
+
+        addTest('physics.computeThrusterDust computes dust when close to ground', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          const mockCastRay = (x, y, dirX, dirY, maxDist) => {
+            return { x: 100, y: 130 };
+          };
+          const dust = Physics.computeThrusterDust(landerState, {
+            castThrustRay: mockCastRay,
+            dustMaxDistance: 70,
+          });
+          expect(dust !== null, 'Dust should be emitted when thruster is close to ground.');
+          expect(dust.spawnCount > 0, 'Dust spawn count should be positive.');
+          expect(dust.prox > 0 && dust.prox <= 1, 'Proximity should be normalized between 0 and 1.');
+        });
+
+        addTest('physics.computeThrusterDust returns null when too far from ground', () => {
+          const landerState = {
+            x: 100,
+            y: 100,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            rotateAccel: 0.002,
+            rotateDamping: 0.99,
+            thrustPower: 0.003,
+            fuel: 1,
+            height: 24,
+          };
+          const mockCastRay = (x, y, dirX, dirY, maxDist) => {
+            return { x: 100, y: 300 };
+          };
+          const dust = Physics.computeThrusterDust(landerState, {
+            castThrustRay: mockCastRay,
+            dustMaxDistance: 70,
+          });
+          expect(dust === null, 'Dust should not be emitted when thruster is too far from ground.');
+        });
+
         function now() {
           if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
             return performance.now();
