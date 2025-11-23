@@ -1567,7 +1567,7 @@
           speed: Math.max(METEOR_MIN_SPEED, Math.min(METEOR_MAX_SPEED, m.speed ?? 0.32)),
           radius: Math.max(METEOR_MIN_RADIUS, Math.min(METEOR_MAX_RADIUS, m.radius ?? 20)),
           spawn: { x: m.spawn?.x ?? 0, y: m.spawn?.y ?? 0 },
-          target: { x: m.target?.x ?? 0, y: m.target?.y ?? 0 },
+          target: { x: m.target?.x ?? 0, y: m.target?.y },
         }));
       }
 
@@ -4892,8 +4892,9 @@ let camY = null;
             }
           }
 
-          // Remove meteors that fly far off-screen
-          if (!meteorRemoved && (meteor.x < -meteor.radius * 4 || meteor.x > terrain.width + meteor.radius * 4 || meteor.y > terrain.height + meteor.radius * 4 || meteor.y < -meteor.radius * 4)) {
+          // Remove meteors that fly far off-screen (increased margin for high spawns)
+          const margin = 400;
+          if (!meteorRemoved && (meteor.x < -margin || meteor.x > terrain.width + margin || meteor.y > terrain.height + margin || meteor.y < -margin)) {
             meteorRemoved = true;
           }
 
