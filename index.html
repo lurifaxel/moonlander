@@ -2532,6 +2532,7 @@ let gameOver = false;
 let message = '';
 let exploded = false;
 let debris = []; // explosion pieces
+      let exhaust = []; // thrust particles
 let landed = false; // success state
 let winFx = []; // celebration particles
 let padFlash = 0; // ms of pad glow remaining
@@ -3803,6 +3804,7 @@ let camY = null;
         winFx = [];
         padFlash = 0;
         smoke = [];
+        exhaust = [];
         blastSmoke = [];
         wreckFlames = [];
         bombs = [];
@@ -5264,6 +5266,44 @@ let camY = null;
         }
         ctx.restore();
       }
+
+      function updateExhaust(dt) {
+        for (const p of exhaust) {
+          p.life -= dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          // drag
+          p.vx *= 0.92;
+          p.vy *= 0.92;
+          // grow
+          p.radius += dt * 0.005;
+        }
+        exhaust = exhaust.filter(p => p.life > 0);
+      }
+
+      function drawExhaust() {
+        if (exhaust.length === 0) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const p of exhaust) {
+          const lifeRatio = p.life / p.maxLife;
+          const alpha = Math.min(1, lifeRatio);
+          const r = 255;
+          const g = Math.floor(100 + 155 * lifeRatio);
+          const b = Math.floor(50 * lifeRatio);
+          
+          const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 2);
+          gradient.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+          gradient.addColorStop(0.5, `rgba(${r},${g},${b},${alpha * 0.5})`);
+          gradient.addColorStop(1, `rgba(${r},${g},${b},0)`);
+          
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
       // --- End smoke helpers ---
 
       // Draw functions
@@ -5272,30 +5312,61 @@ let camY = null;
         ctx.save();
         ctx.translate(lander.x, lander.y);
         ctx.rotate(lander.angle);
-        ctx.fillStyle = '#e8e8ff';
-        ctx.beginPath();
-        ctx.moveTo(0, -lander.height / 2);
-        ctx.lineTo(-lander.width / 2, lander.height / 2);
-        ctx.lineTo(lander.width / 2, lander.height / 2);
-        ctx.closePath();
-        ctx.fill();
+        
+        // Thrust Glare
+        if (keys['ArrowUp'] && lander.fuel > 0 && !gameOver) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen'; // Changed to screen for better visibility
+          const glareRadius = lander.width * 1.6;
+          const gradient = ctx.createRadialGradient(0, lander.height * 0.6, 0, 0, lander.height * 0.6, glareRadius);
+          gradient.addColorStop(0, 'rgba(120, 220, 255, 0.7)');
+          gradient.addColorStop(0.4, 'rgba(100, 200, 255, 0.3)');
+          gradient.addColorStop(1, 'rgba(100, 200, 255, 0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(0, lander.height * 0.6, glareRadius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Legs
         ctx.strokeStyle = '#c0c0f0';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(-lander.legAttachOffset, lander.height / 2);
-        ctx.lineTo(-lander.legFootOffset, lander.height / 2 + lander.legLength);
-        ctx.moveTo(lander.legAttachOffset, lander.height / 2);
-        ctx.lineTo(lander.legFootOffset, lander.height / 2 + lander.legLength);
+        // Left leg
+        ctx.moveTo(-lander.width * 0.55, lander.height * 0.2);
+        ctx.lineTo(-lander.width * 0.8, lander.height * 0.7);
+        ctx.lineTo(-lander.width * 0.95, lander.height * 0.7);
+        // Right leg
+        ctx.moveTo(lander.width * 0.55, lander.height * 0.2);
+        ctx.lineTo(lander.width * 0.8, lander.height * 0.7);
+        ctx.lineTo(lander.width * 0.95, lander.height * 0.7);
         ctx.stroke();
-        if (keys['ArrowUp'] && lander.fuel > 0 && !gameOver) {
-          ctx.fillStyle = '#ff9933';
-          ctx.beginPath();
-          ctx.moveTo(0, lander.height / 2);
-          ctx.lineTo(-5, lander.height / 2 + 15);
-          ctx.lineTo(5, lander.height / 2 + 15);
-          ctx.closePath();
-          ctx.fill();
-        }
+
+        // Main Body (Trapezoid)
+        ctx.fillStyle = '#e8e8ff';
+        ctx.beginPath();
+        const wBase = lander.width * 0.75; // Even wider base
+        const wTop = lander.width * 0.3;
+        const h = lander.height * 0.4;
+        const yCenter = -lander.height * 0.1;
+
+        ctx.moveTo(-wTop, yCenter - h);
+        ctx.lineTo(wTop, yCenter - h);
+        ctx.lineTo(wBase, yCenter + h);
+        ctx.lineTo(-wBase, yCenter + h);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Window
+        ctx.fillStyle = '#333344';
+        ctx.beginPath();
+        const winW = wTop * 0.5;
+        const winH = h * 0.4;
+        const winY = yCenter - h * 0.2;
+        ctx.rect(-winW, winY - winH/2, winW * 2, winH);
+        ctx.fill();
+
         ctx.restore();
       }
 
@@ -5578,6 +5649,7 @@ let camY = null;
         updateWinFx(dt);
         updateMeteors(dt);
         updateSmoke(dt);
+        updateExhaust(dt);
         updateBombs(dt);
         if (padFlash > 0) padFlash -= dt;
         padPulsePhase = (padPulsePhase + (dt / PAD_PULSE_PERIOD) * Math.PI * 2) % (Math.PI * 2);
@@ -5611,6 +5683,43 @@ let camY = null;
           castThrustRay,
         });
         audio.setThrusterActive(integrationResult.thrusterActive);
+        if (controlState.thrust && lander.fuel > 0) {
+           // Spawn exhaust particles
+           const nozzleOffset = lander.height / 2;
+           const nozzleX = lander.x - Math.sin(lander.angle) * nozzleOffset;
+           const nozzleY = lander.y + Math.cos(lander.angle) * nozzleOffset;
+           
+           for (let i = 0; i < 2; i++) {
+             const angle = lander.angle + (Math.random() - 0.5) * 0.5;
+             const speed = 0.1 + Math.random() * 0.1;
+             exhaust.push({
+               x: nozzleX,
+               y: nozzleY,
+               vx: lander.vx - Math.sin(angle) * speed,
+               vy: lander.vy + Math.cos(angle) * speed,
+               radius: 2 + Math.random() * 3,
+               life: 200 + Math.random() * 200,
+               maxLife: 400
+             });
+           }
+           
+           // Occasionally spawn smoke
+           if (Math.random() < 0.3) {
+             const angle = lander.angle + (Math.random() - 0.5) * 0.8;
+             const speed = 0.05 + Math.random() * 0.05;
+             smoke.push({
+                x: nozzleX,
+                y: nozzleY,
+                vx: lander.vx - Math.sin(angle) * speed,
+                vy: lander.vy + Math.cos(angle) * speed,
+                r: 4 + Math.random() * 4,
+                life: 1000 + Math.random() * 1000,
+                maxLife: 2000,
+                color: [100, 100, 100, 100],
+                prox: 0
+             });
+           }
+        }
         if (integrationResult.captureHole) {
           consumeLanderIntoBlackHole(integrationResult.captureHole);
           return;
@@ -6321,6 +6430,7 @@ let camY = null;
             drawSmoke();
             drawBlastSmoke();
             drawWreckFlames();
+            drawExhaust();
             drawLander();
             drawDebris();
             drawWinFx();
