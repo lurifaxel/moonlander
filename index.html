@@ -2518,6 +2518,7 @@
         width: 20,
         height: 30,
         thrustPower: 0.0007,
+        hits: 0,
         // rotateSpeed is no longer used; we keep it commented for reference
         // rotateSpeed: 0.04,
       };
@@ -3796,6 +3797,7 @@ let camY = null;
         lander.angle = 0;
         lander.angularVelocity = 0;
         lander.fuel = 100;
+        lander.hits = 0;
         gameOver = false;
         message = '';
         exploded = false;
@@ -3825,6 +3827,29 @@ let camY = null;
         clearVirtualTouchState();
       }
 
+      function spawnShipDebris(x, y, baseVx, baseVy) {
+        const count = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 0.05 + Math.random() * 0.1;
+          const radius = 4 + Math.random() * 6;
+          const life = 600 + Math.random() * 400;
+          // Spawn debris near top of lander
+          const offsetY = -lander.height * 0.4 + (Math.random() - 0.5) * 10;
+          debris.push({
+            x,
+            y: y + offsetY,
+            vx: baseVx * 0.5 + Math.sin(angle) * speed,
+            vy: baseVy * 0.5 - Math.cos(angle) * speed,
+            radius,
+            radiusStart: radius,
+            life,
+            lifeStart: life,
+            kind: 'ship_debris',
+          });
+        }
+      }
+
       function spawnExplosion(x, y, baseVx, baseVy) {
         if (exploded) return;
         exploded = true;
@@ -3842,12 +3867,33 @@ let camY = null;
         audio.playDeathTone();
         debris = [];
 
-        // Only create crater if ship is at or near ground
-        const surfaceBelow = findSurfaceBelow(x, Math.max(0, y - 10));
-        const isNearGround = surfaceBelow && Math.abs(y - surfaceBelow.y) < 30;
+        // Create crater if we're near any solid terrain (not just below)
+        let shouldCreateCrater = false;
+        let craterY = y;
         
-        if (isNearGround) {
-          deformTerrainAt(x, y, CRASH_CRATER_RADIUS, CRASH_CRATER_DEPTH);
+        // First check if there's ground below
+        const surfaceBelow = findSurfaceBelow(x, Math.max(0, y - 10));
+        if (surfaceBelow && Math.abs(y - surfaceBelow.y) < 30) {
+          shouldCreateCrater = true;
+          craterY = surfaceBelow.y;
+        } else {
+          // Check if we're colliding with terrain (e.g., vertical wall)
+          const checkRadius = 15;
+          for (let dx = -checkRadius; dx <= checkRadius; dx += terrain.cellSize) {
+            for (let dy = -checkRadius; dy <= checkRadius; dy += terrain.cellSize) {
+              if (isSolidWorld(x + dx, y + dy)) {
+                shouldCreateCrater = true;
+                // For vertical walls, use the collision y directly
+                craterY = y;
+                break;
+              }
+            }
+            if (shouldCreateCrater) break;
+          }
+        }
+        
+        if (shouldCreateCrater) {
+          deformTerrainAt(x, craterY, CRASH_CRATER_RADIUS, CRASH_CRATER_DEPTH);
         }
         
         // Spawn explosion debris at actual collision point, not ground level
@@ -4348,6 +4394,16 @@ let camY = null;
         ctx.globalCompositeOperation = 'lighter';
         for (const p of debris) {
           if (p.life <= 0 || p.radius <= 0.4) continue;
+          
+          if (p.kind === 'ship_debris') {
+             const alpha = Math.min(1, p.life / 200);
+             ctx.fillStyle = `rgba(232, 232, 255, ${alpha})`;
+             ctx.beginPath();
+             ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+             ctx.fill();
+             continue;
+          }
+
           const progress = 1 - clamp01(p.life / p.lifeStart);
           const { r, g, b } = heatColor(progress, p.glowBias);
           const alpha = Math.min(1, 0.85 * (1 - progress * 0.35) * p.glowBias);
@@ -5070,18 +5126,23 @@ let camY = null;
       function deformTerrainAt(x, y, radius, depth) {
         if (radius <= 0) return;
         const cellSize = terrain.cellSize;
-        const radiusSq = radius * radius;
         const minCol = Math.max(0, Math.floor((x - radius) / cellSize));
         const maxCol = Math.min(terrain.cols - 1, Math.ceil((x + radius) / cellSize));
-        const minRow = Math.max(0, Math.floor((y - depth - radius) / cellSize));
+        const minRow = Math.max(0, Math.floor((y - radius) / cellSize));
         const maxRow = Math.min(terrain.rows - 1, Math.ceil((y + radius) / cellSize));
+        
+        const radiusSq = radius * radius;
+        
         for (let row = minRow; row <= maxRow; row++) {
           for (let col = minCol; col <= maxCol; col++) {
             const cx = (col + 0.5) * cellSize;
             const cy = (row + 0.5) * cellSize;
             const dx = cx - x;
             const dy = cy - y;
-            if (dx * dx + dy * dy <= radiusSq) {
+            const distSq = dx * dx + dy * dy;
+            
+            // Spherical crater that works on any angle
+            if (distSq <= radiusSq) {
               setSolidCell(col, row, 0);
             }
           }
@@ -5720,6 +5781,24 @@ let camY = null;
              });
            }
         }
+        // Damaged ship smoke (starts after 2nd hit)
+        if (lander.hits >= 2 && !gameOver && !exploded) {
+             if (Math.random() < 0.4) {
+                 const spread = (Math.random() - 0.5) * 10;
+                 blastSmoke.push({
+                    x: lander.x + spread,
+                    y: lander.y - lander.height * 0.3,
+                    vx: lander.vx + (Math.random() - 0.5) * 0.05,
+                    vy: lander.vy - 0.02 - Math.random() * 0.02,
+                    radius: 6 + Math.random() * 8,
+                    radiusStart: 6 + Math.random() * 8,
+                    life: 1000 + Math.random() * 500,
+                    lifeStart: 1000 + Math.random() * 500,
+                    heat: 0.5 + Math.random() * 0.5,
+                    source: 'blast' 
+                 });
+             }
+        }
         if (integrationResult.captureHole) {
           consumeLanderIntoBlackHole(integrationResult.captureHole);
           return;
@@ -5823,7 +5902,28 @@ let camY = null;
           } else {
             const crashX = impactPoint ? impactPoint.x : lander.x;
             const crashY = impactPoint ? impactPoint.y : groundYAt(lander.x, lander.y);
-            spawnExplosion(crashX, crashY, lander.vx, lander.vy);
+            
+            const impactSpeed = Math.hypot(lander.vx, lander.vy);
+            const MAJOR_HIT_SPEED = 0.18;
+            
+            if (impactSpeed > MAJOR_HIT_SPEED || lander.hits >= 2) {
+              spawnExplosion(crashX, crashY, lander.vx, lander.vy);
+            } else {
+              // Minor hit
+              lander.hits++;
+              spawnShipDebris(crashX, crashY, lander.vx, lander.vy);
+              
+              // Bounce and repel
+              lander.vx *= -0.5;
+              lander.vy *= -0.5;
+              lander.y -= 2;
+              
+              // Ensure we don't get stuck in ground
+              if (impactPoint) {
+                 lander.x += impactPoint.normal.x * 2;
+                 lander.y += impactPoint.normal.y * 2;
+              }
+            }
           }
         }
       }
@@ -6428,10 +6528,10 @@ let camY = null;
             drawMeteors();
             drawBombs();
             drawSmoke();
-            drawBlastSmoke();
             drawWreckFlames();
             drawExhaust();
             drawLander();
+            drawBlastSmoke();
             drawDebris();
             drawWinFx();
           } else if (isEditor) {
